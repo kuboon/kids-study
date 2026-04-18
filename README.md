@@ -10,7 +10,7 @@ iPad + Apple Pencil 向けの、ひらがな・カタカナ・アルファベッ
 
 ## 技術スタック
 
-- **Runtime/tasks**: Deno 2
+- **Runtime/tasks**: Node.js 22 + npm
 - **Bundler**: Vite 5
 - **UI**: Preact 10 + TypeScript（JSX runtime）
 - **Routing**: 自前のハッシュルータ（`src/lib/router.ts`）
@@ -24,19 +24,10 @@ iPad + Apple Pencil 向けの、ひらがな・カタカナ・アルファベッ
 ## 開発
 
 ```bash
-# Deno 前提
-deno task install
-deno task dev      # http://localhost:5173
-deno task build    # build/ に静的ファイル出力
-deno task preview
-```
-
-npm でも動きます:
-
-```bash
 npm install
-npm run dev
-npm run build
+npm run dev      # http://localhost:5173
+npm run build    # build/ に静的ファイル出力
+npm run preview
 ```
 
 ## 構成
