@@ -1,0 +1,46 @@
+.writing-wrap {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.writing-canvas {
+  display: block;
+  width: min(70vw, 70vh, 560px);
+  height: min(70vw, 70vh, 560px);
+  background: #fff;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.writing-side-guide {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: min(36vw, 36vh, 280px);
+  height: min(36vw, 36vh, 280px);
+  background: #fff;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  color: var(--pink-dark);
+  font-weight: 800;
+  font-size: clamp(80px, 20vmin, 180px);
+  font-family: 'Hiragino Maru Gothic ProN', 'Yu Gothic', 'Meiryo', sans-serif;
+}
+
+.writing-tools {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+.writing-tools .btn[disabled] {
+  opacity: 0.4;
+  pointer-events: none;
+}
