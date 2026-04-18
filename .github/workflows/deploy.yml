@@ -20,17 +20,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: denoland/setup-deno@v1
+      - uses: actions/setup-node@v4
         with:
-          deno-version: v2.x
+          node-version: 22
+          cache: npm
 
-      - name: Install npm deps (for Vite + Preact)
-        run: deno task install
+      - name: Install npm deps
+        run: npm ci
         env:
           BASE_PATH: /${{ github.event.repository.name }}/
 
       - name: Build
-        run: deno task build
+        run: npm run build
         env:
           BASE_PATH: /${{ github.event.repository.name }}/
 
