@@ -113,8 +113,8 @@ export function WritingCanvas({ guide, level, color = '#e74e82', onAnyStroke }: 
             text-anchor="middle"
             dominant-baseline="central"
             font-size={fontSize}
-            font-family="'Hiragino Maru Gothic ProN', 'Yu Gothic', 'Meiryo', sans-serif"
-            font-weight="800"
+            font-family="'BIZ UDMincho', serif"
+            font-weight="700"
             fill={`rgba(74, 42, 56, ${guideOpacity})`}
           >
             {guide}

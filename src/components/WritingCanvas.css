@@ -27,9 +27,9 @@
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   color: var(--pink-dark);
-  font-weight: 800;
+  font-weight: 700;
   font-size: clamp(80px, 20vmin, 180px);
-  font-family: 'Hiragino Maru Gothic ProN', 'Yu Gothic', 'Meiryo', sans-serif;
+  font-family: 'BIZ UDMincho', serif;
 }
 
 .writing-tools {
