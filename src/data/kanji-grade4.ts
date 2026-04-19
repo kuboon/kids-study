@@ -1,4 +1,4 @@
-import type { Deck } from './hiragana';
+import type { TraceDeck } from './hiragana';
 
 const ALL = [
   ['愛', 'あい'], ['案', 'あん'], ['以', 'い'], ['衣', 'ころも'], ['位', 'くらい'],
@@ -49,7 +49,7 @@ const EMOJI = ['🌸', '⭐', '🐰', '🍓', '🦋', '🎀', '🌈', '🌷', '�
                '💐', '🎈', '🌼', '🦄', '🍰', '✨', '🌺', '🎁', '🐶', '🍎',
                '🌙', '🌊'];
 
-export const kanjiDecks: Deck[] = [];
+export const kanjiDecks: TraceDeck[] = [];
 for (let i = 0; i < ALL.length; i += CHUNK) {
   const slice = ALL.slice(i, i + CHUNK);
   const num = Math.floor(i / CHUNK) + 1;

@@ -1,8 +1,32 @@
 export type CharItem = { char: string; reading: string };
 
-export type Deck = { id: string; label: string; emoji: string; items: CharItem[] };
+export type EmojiChoiceItem = {
+  emoji: string;
+  hira: string;
+  kata: string;
+  en: string;
+  EN: string;
+};
 
-export const hiraganaDecks: Deck[] = [
+export type TraceDeck = {
+  kind?: 'trace';
+  id: string;
+  label: string;
+  emoji: string;
+  items: CharItem[];
+};
+
+export type EmojiChoiceDeck = {
+  kind: 'emoji-choice';
+  id: string;
+  label: string;
+  emoji: string;
+  items: EmojiChoiceItem[];
+};
+
+export type Deck = TraceDeck | EmojiChoiceDeck;
+
+export const hiraganaDecks: TraceDeck[] = [
   {
     id: 'hira-a',
     label: 'あぎょう',
