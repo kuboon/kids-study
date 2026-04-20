@@ -16,11 +16,14 @@ export type TraceDeck = {
   items: CharItem[];
 };
 
+export type EmojiChoiceScript = 'hira' | 'kata' | 'EN';
+
 export type EmojiChoiceDeck = {
   kind: 'emoji-choice';
   id: string;
   label: string;
   emoji: string;
+  script: EmojiChoiceScript;
   items: EmojiChoiceItem[];
 };
 

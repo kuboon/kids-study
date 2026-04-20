@@ -15,10 +15,10 @@ export type DeckCategory = {
 };
 
 export const CATEGORIES: DeckCategory[] = [
+  { id: 'emoji', label: 'えらぼうゲーム', emoji: '🎮', grade: 1, decks: emojiChoiceDecks },
   { id: 'hira', label: 'ひらがな', emoji: '🌸', grade: 1, decks: hiraganaDecks },
   { id: 'kata', label: 'カタカナ', emoji: '🌟', grade: 1, decks: katakanaDecks },
   { id: 'alpha', label: 'アルファベット', emoji: '🦄', grade: 1, decks: alphabetDecks },
-  { id: 'emoji', label: 'えらぼうゲーム', emoji: '🎮', grade: 1, decks: emojiChoiceDecks },
   { id: 'kanji', label: '漢字', emoji: '🈶', grade: 4, decks: kanjiDecks },
   { id: 'en', label: '英単語', emoji: '🌈', grade: 4, decks: englishDecks },
 ];
