@@ -1,22 +1,13 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
-import type { EmojiChoiceItem } from '../data/hiragana';
+import type { EmojiChoiceItem, EmojiChoiceScript } from '../data/hiragana';
 
-type ScriptKey = 'hira' | 'kata' | 'en' | 'EN';
-
-const PROMPTS: Record<ScriptKey, string> = {
+const PROMPTS: Record<EmojiChoiceScript, string> = {
   hira: 'ひらがな で えらぼう',
   kata: 'カタカナ で えらぼう',
-  en: 'えいご で えらぼう',
-  EN: 'おおきい えいご で えらぼう',
+  EN: 'アルファベット で えらぼう',
 };
 
-const KEYS: ScriptKey[] = ['hira', 'kata', 'en', 'EN'];
-
-function pickTarget(seed: number): ScriptKey {
-  return KEYS[seed % KEYS.length];
-}
-
-function shuffle<T>(arr: T[], seed: number): T[] {
+function seededShuffle<T>(arr: T[], seed: number): T[] {
   const out = [...arr];
   let s = seed * 9301 + 49297;
   for (let i = out.length - 1; i > 0; i--) {
@@ -28,37 +19,37 @@ function shuffle<T>(arr: T[], seed: number): T[] {
 }
 
 export type EmojiChoiceGameProps = {
-  item: EmojiChoiceItem;
+  items: EmojiChoiceItem[];
   index: number;
+  script: EmojiChoiceScript;
   onCorrect: () => void;
 };
 
-export function EmojiChoiceGame({ item, index, onCorrect }: EmojiChoiceGameProps) {
-  const target = useMemo(() => pickTarget(index), [index]);
-  const options = useMemo(
-    () =>
-      shuffle(
-        KEYS.map((k) => ({ key: k, text: item[k] })),
-        index + 1,
-      ),
-    [item, index],
-  );
-  const [wrong, setWrong] = useState<ScriptKey | null>(null);
+export function EmojiChoiceGame({ items, index, script, onCorrect }: EmojiChoiceGameProps) {
+  const item = items[index];
+  const options = useMemo(() => {
+    const others = items.filter((_, i) => i !== index);
+    const distractors = seededShuffle(others, index + 1).slice(0, 3);
+    return seededShuffle([item, ...distractors], index * 7 + 3);
+  }, [items, index]);
+  const [wrong, setWrong] = useState<string | null>(null);
   const [correct, setCorrect] = useState(false);
 
   useEffect(() => {
     setWrong(null);
     setCorrect(false);
-  }, [item, index]);
+  }, [items, index]);
 
-  function choose(key: ScriptKey) {
+  const answer = item[script];
+
+  function choose(value: string) {
     if (correct) return;
-    if (key === target) {
+    if (value === answer) {
       setCorrect(true);
       setTimeout(onCorrect, 450);
     } else {
-      setWrong(key);
-      setTimeout(() => setWrong((w) => (w === key ? null : w)), 600);
+      setWrong(value);
+      setTimeout(() => setWrong((w) => (w === value ? null : w)), 600);
     }
   }
 
@@ -67,20 +58,21 @@ export function EmojiChoiceGame({ item, index, onCorrect }: EmojiChoiceGameProps
       <div class="emoji-big" aria-label="えもじ">
         {item.emoji}
       </div>
-      <div class="emoji-prompt">{PROMPTS[target]}</div>
+      <div class="emoji-prompt">{PROMPTS[script]}</div>
       <div class="emoji-choices">
         {options.map((o) => {
-          const isTarget = o.key === target;
+          const text = o[script];
+          const isCorrect = text === answer;
           const cls = [
             'emoji-choice-btn',
-            wrong === o.key ? 'wrong' : '',
-            correct && isTarget ? 'correct' : '',
+            wrong === text ? 'wrong' : '',
+            correct && isCorrect ? 'correct' : '',
           ]
             .filter(Boolean)
             .join(' ');
           return (
-            <button key={o.key} class={cls} onClick={() => choose(o.key)} disabled={correct}>
-              {o.text}
+            <button key={text} class={cls} onClick={() => choose(text)} disabled={correct}>
+              {text}
             </button>
           );
         })}

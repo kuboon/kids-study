@@ -79,8 +79,9 @@ export function PlayPage({ store, account, deckId, onChange }: Props) {
       {deck.kind === 'emoji-choice' ? (
         <EmojiChoiceGame
           key={`${deck.id}-${idx}`}
-          item={deck.items[idx]}
+          items={deck.items}
           index={idx}
+          script={deck.script}
           onCorrect={advance}
         />
       ) : (
