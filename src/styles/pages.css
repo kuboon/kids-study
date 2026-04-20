@@ -217,10 +217,89 @@
   color: var(--pink-dark);
 }
 
+.emoji-game {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 0;
+}
+
+.emoji-big {
+  font-size: clamp(96px, 22vmin, 200px);
+  line-height: 1;
+  background: #fff;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px 32px;
+}
+
+.emoji-prompt {
+  font-size: clamp(20px, 4vw, 28px);
+  font-weight: 800;
+  color: var(--pink-dark);
+}
+
+.emoji-choices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(140px, 1fr));
+  gap: 12px;
+  width: 100%;
+  max-width: 560px;
+}
+
+.emoji-choice-btn {
+  min-height: 72px;
+  padding: 16px 12px;
+  background: #fff;
+  color: var(--text);
+  font-size: clamp(20px, 4.5vw, 28px);
+  font-weight: 700;
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+  transition: transform 0.08s ease, background 0.2s ease;
+}
+
+.emoji-choice-btn:active {
+  transform: translateY(2px);
+}
+
+.emoji-choice-btn.wrong {
+  background: #ffd3d3;
+  animation: shake 0.4s ease;
+}
+
+.emoji-choice-btn.correct {
+  background: var(--mint);
+  color: #fff;
+  animation: correct-pop 0.4s ease;
+}
+
+.emoji-choice-btn[disabled] {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-8px); }
+  75% { transform: translateX(8px); }
+}
+
+@keyframes correct-pop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+
 .play-footer {
+  position: sticky;
+  bottom: 0;
   display: flex;
   justify-content: center;
-  padding: 12px;
+  padding: 12px 0 max(12px, env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, rgba(255, 246, 249, 0) 0%, var(--bg) 40%);
+  z-index: 5;
 }
 
 .praise-toast {

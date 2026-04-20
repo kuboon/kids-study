@@ -8,8 +8,8 @@
 
 .writing-canvas {
   display: block;
-  width: min(70vw, 70vh, 560px);
-  height: min(70vw, 70vh, 560px);
+  width: min(82vw, 48vh, 520px);
+  height: min(82vw, 48vh, 520px);
   background: #fff;
   border-radius: var(--radius);
   box-shadow: var(--shadow);
@@ -21,8 +21,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: min(36vw, 36vh, 280px);
-  height: min(36vw, 36vh, 280px);
+  width: min(32vw, 30vh, 240px);
+  height: min(32vw, 30vh, 240px);
   background: #fff;
   border-radius: var(--radius);
   box-shadow: var(--shadow);

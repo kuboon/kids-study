@@ -1,4 +1,4 @@
-import type { Deck } from './hiragana';
+import type { TraceDeck } from './hiragana';
 
 function letters(start: string, end: string): string[] {
   const out: string[] = [];
@@ -9,7 +9,7 @@ function letters(start: string, end: string): string[] {
 const UPPER = letters('A', 'Z');
 const LOWER = letters('a', 'z');
 
-function makeDeck(id: string, label: string, emoji: string, chars: string[]): Deck {
+function makeDeck(id: string, label: string, emoji: string, chars: string[]): TraceDeck {
   return {
     id,
     label,
@@ -18,7 +18,7 @@ function makeDeck(id: string, label: string, emoji: string, chars: string[]): De
   };
 }
 
-export const alphabetDecks: Deck[] = [
+export const alphabetDecks: TraceDeck[] = [
   makeDeck('alpha-upper-1', 'A–M（おおきい）', '🐶', UPPER.slice(0, 13)),
   makeDeck('alpha-upper-2', 'N–Z（おおきい）', '🐱', UPPER.slice(13)),
   makeDeck('alpha-lower-1', 'a–m（ちいさい）', '🌸', LOWER.slice(0, 13)),

@@ -1,6 +1,6 @@
-import type { Deck } from './hiragana';
+import type { TraceDeck } from './hiragana';
 
-export const englishDecks: Deck[] = [
+export const englishDecks: TraceDeck[] = [
   {
     id: 'en-colors',
     label: 'Colors いろ',

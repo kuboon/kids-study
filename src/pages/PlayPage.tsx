@@ -6,6 +6,7 @@ import { getDeckProgress, recordPlay } from '../lib/progress';
 import { pickPraise } from '../lib/praise';
 import { pickRandomStamp } from '../lib/stamps';
 import { WritingCanvas } from '../components/WritingCanvas';
+import { EmojiChoiceGame } from '../components/EmojiChoiceGame';
 import { navigate } from '../lib/router';
 
 type Props = {
@@ -38,10 +39,9 @@ export function PlayPage({ store, account, deckId, onChange }: Props) {
   const { category, deck } = found;
   const progress = getDeckProgress(account, deck.id);
   const level = progress.level;
-  const item = deck.items[idx];
   const isLast = idx === deck.items.length - 1;
 
-  function goNext() {
+  function advance() {
     setHasStroke(false);
     setPraise(pickPraise(account.grade));
     setTimeout(() => setPraise(null), 1200);
@@ -76,22 +76,31 @@ export function PlayPage({ store, account, deckId, onChange }: Props) {
         </div>
       </div>
 
-      <div class="play-reading">
-        よみかた：<strong>{item.reading}</strong>
-      </div>
-
-      <WritingCanvas
-        key={`${deck.id}-${idx}`}
-        guide={item.char}
-        level={level}
-        onAnyStroke={() => setHasStroke(true)}
-      />
-
-      <div class="play-footer">
-        <button class="btn primary big" onClick={goNext} disabled={!hasStroke}>
-          {isLast ? '🎉 おわり！' : 'できた！ →'}
-        </button>
-      </div>
+      {deck.kind === 'emoji-choice' ? (
+        <EmojiChoiceGame
+          key={`${deck.id}-${idx}`}
+          item={deck.items[idx]}
+          index={idx}
+          onCorrect={advance}
+        />
+      ) : (
+        <>
+          <div class="play-reading">
+            よみかた：<strong>{deck.items[idx].reading}</strong>
+          </div>
+          <WritingCanvas
+            key={`${deck.id}-${idx}`}
+            guide={deck.items[idx].char}
+            level={level}
+            onAnyStroke={() => setHasStroke(true)}
+          />
+          <div class="play-footer">
+            <button class="btn primary big" onClick={advance} disabled={!hasStroke}>
+              {isLast ? '🎉 おわり！' : 'できた！ →'}
+            </button>
+          </div>
+        </>
+      )}
 
       {praise && <div class="praise-toast">{praise}</div>}
 

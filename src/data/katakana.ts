@@ -1,6 +1,6 @@
-import type { Deck } from './hiragana';
+import type { TraceDeck } from './hiragana';
 
-export const katakanaDecks: Deck[] = [
+export const katakanaDecks: TraceDeck[] = [
   {
     id: 'kata-a',
     label: 'アぎょう',
