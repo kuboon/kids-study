@@ -16,12 +16,28 @@ type Props = {
   onChange: () => void;
 };
 
+const EMOJI_ROUND_SIZE = 10;
+
 export function PlayPage({ store, account, deckId, onChange }: Props) {
   const found = useMemo(() => findDeck(deckId), [deckId]);
   const [idx, setIdx] = useState(0);
   const [praise, setPraise] = useState<string | null>(null);
   const [awarded, setAwarded] = useState<string | null>(null);
   const [hasStroke, setHasStroke] = useState(false);
+
+  const playItems = useMemo(() => {
+    if (!found) return [];
+    if (found.deck.kind === 'emoji-choice') {
+      const pool = found.deck.items;
+      const shuffled = [...pool];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      return shuffled.slice(0, Math.min(EMOJI_ROUND_SIZE, pool.length));
+    }
+    return found.deck.items;
+  }, [found]);
 
   if (!found) {
     return (
@@ -39,7 +55,7 @@ export function PlayPage({ store, account, deckId, onChange }: Props) {
   const { category, deck } = found;
   const progress = getDeckProgress(account, deck.id);
   const level = progress.level;
-  const isLast = idx === deck.items.length - 1;
+  const isLast = idx === playItems.length - 1;
 
   function advance() {
     setHasStroke(false);
@@ -72,14 +88,15 @@ export function PlayPage({ store, account, deckId, onChange }: Props) {
           {category.emoji} {deck.label}
         </div>
         <div class="progress-pill">
-          {idx + 1}/{deck.items.length}
+          {idx + 1}/{playItems.length}
         </div>
       </div>
 
       {deck.kind === 'emoji-choice' ? (
         <EmojiChoiceGame
           key={`${deck.id}-${idx}`}
-          items={deck.items}
+          items={playItems as typeof deck.items}
+          pool={deck.items}
           index={idx}
           script={deck.script}
           onCorrect={advance}
@@ -87,11 +104,11 @@ export function PlayPage({ store, account, deckId, onChange }: Props) {
       ) : (
         <>
           <div class="play-reading">
-            よみかた：<strong>{deck.items[idx].reading}</strong>
+            よみかた：<strong>{(playItems as typeof deck.items)[idx].reading}</strong>
           </div>
           <WritingCanvas
             key={`${deck.id}-${idx}`}
-            guide={deck.items[idx].char}
+            guide={(playItems as typeof deck.items)[idx].char}
             level={level}
             onAnyStroke={() => setHasStroke(true)}
           />

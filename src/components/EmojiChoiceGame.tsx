@@ -20,18 +20,25 @@ function seededShuffle<T>(arr: T[], seed: number): T[] {
 
 export type EmojiChoiceGameProps = {
   items: EmojiChoiceItem[];
+  pool: EmojiChoiceItem[];
   index: number;
   script: EmojiChoiceScript;
   onCorrect: () => void;
 };
 
-export function EmojiChoiceGame({ items, index, script, onCorrect }: EmojiChoiceGameProps) {
+export function EmojiChoiceGame({ items, pool, index, script, onCorrect }: EmojiChoiceGameProps) {
   const item = items[index];
   const options = useMemo(() => {
-    const others = items.filter((_, i) => i !== index);
-    const distractors = seededShuffle(others, index + 1).slice(0, 3);
+    const answerText = item[script];
+    const others = pool.filter((o) => o !== item);
+    const matching =
+      script === 'hira' || script === 'kata'
+        ? others.filter((o) => [...o[script]].length === [...answerText].length)
+        : others;
+    const distractorPool = matching.length >= 3 ? matching : others;
+    const distractors = seededShuffle(distractorPool, index + 1).slice(0, 3);
     return seededShuffle([item, ...distractors], index * 7 + 3);
-  }, [items, index]);
+  }, [item, pool, index, script]);
   const [wrong, setWrong] = useState<string | null>(null);
   const [correct, setCorrect] = useState(false);
 
