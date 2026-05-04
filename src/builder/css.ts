@@ -11,15 +11,15 @@ import { Scanner } from "@tailwindcss/oxide";
 
 const SRC_ROOT = new URL("..", import.meta.url).pathname;
 const INPUT = new URL("../assets/style.css", import.meta.url).pathname;
-const OUTPUT = new URL("../bundled/style.css", import.meta.url).pathname;
+const OUTPUT = new URL("../../dist/style.css", import.meta.url).pathname;
 
 export async function buildCss(
   { minify = false }: { minify?: boolean } = {},
 ) {
   const scanner = new Scanner({
     sources: [
-      { base: `${SRC_ROOT}server`, pattern: "**/*", negated: false },
       { base: `${SRC_ROOT}client`, pattern: "**/*", negated: false },
+      { base: `${SRC_ROOT}ssg`, pattern: "**/*", negated: false },
     ],
   });
   const candidates = scanner.scan();

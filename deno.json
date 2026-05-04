@@ -2,10 +2,11 @@
   "workspace": [
     "./src",
     "./src/builder",
-    "./src/client"
+    "./src/client",
+    "./src/ssg"
   ],
   "tasks": {
-    "dev": "deno task --cwd src/server dev",
+    "serve": "cd dist && deno run --allow-net --allow-read jsr:@std/http/file-server",
     "build": "deno task --cwd src/builder build",
     "test": "deno test -P",
     "check": "deno check && deno lint && deno fmt --check"

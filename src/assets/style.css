@@ -1,7 +1,7 @@
 @import "tailwindcss/index.css";
 
 @plugin "daisyui" {
-  themes: light --default, dark --prefersdark, cupcake, retro, nord, lofi;
+  themes: cupcake --default, dark --prefersdark, light, retro, nord, lofi;
 }
 
 @layer base {

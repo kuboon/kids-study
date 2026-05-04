@@ -2,7 +2,7 @@
 deno = "latest"
 
 [tasks.build]
-run = "deno task build && mv src/bundled ./dist"
+run = "mkdir -p dist && deno task build"
 
 [tasks.dev]
 run = "deno task dev"

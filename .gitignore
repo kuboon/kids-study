@@ -1,10 +1,7 @@
 node_modules/
 dist/
-src/bundled/
-build
 .DS_Store
 *.log
-.vite
 .env
 .env.local
 
