@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "daisyui": "npm:daisyui@^5.5.19",
+    "tailwindcss": "npm:tailwindcss@^4.1.18"
+  }
+}

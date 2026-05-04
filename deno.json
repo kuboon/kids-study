@@ -1,0 +1,21 @@
+{
+  "workspace": [
+    "./src",
+    "./src/builder",
+    "./src/client"
+  ],
+  "tasks": {
+    "dev": "deno task --cwd src/server dev",
+    "build": "deno task --cwd src/builder build",
+    "test": "deno test -P",
+    "check": "deno check && deno lint && deno fmt --check"
+  },
+  "permissions": {
+    "default": {}
+  },
+  "test": {
+    "permissions": "default"
+  },
+  "nodeModulesDir": "auto",
+  "unstable": ["bundle"]
+}

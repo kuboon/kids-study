@@ -18,5 +18,5 @@ jobs:
   deploy:
     uses: kuboon/workflows/.github/workflows/github-page-with-preview.yaml@main
     with:
-      build-command: npm run build
+      build-command: mise run build
       dist-dir: ./dist

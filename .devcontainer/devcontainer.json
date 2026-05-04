@@ -1,11 +1,11 @@
 {
-	"name": "kids-study Dev Container",
-	"image": "mcr.microsoft.com/devcontainers/base:debian",
+  "name": "kids-study Dev Container",
+  "image": "mcr.microsoft.com/devcontainers/base:debian",
 
-	"features": {
-		"ghcr.io/kuboon/devcontainer-features/mise-bun": {
-			"global": "deno"
-		}
-	},
-	"postCreateCommand": ".devcontainer/postCreate.sh"
+  "features": {
+    "ghcr.io/kuboon/devcontainer-features/mise-bun": {
+      "global": "deno"
+    }
+  },
+  "postCreateCommand": ".devcontainer/postCreate.sh"
 }
