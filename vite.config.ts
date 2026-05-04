@@ -9,7 +9,6 @@ export default defineConfig(({ mode }) => {
     plugins: [preact()],
     build: {
       target: 'es2022',
-      outDir: 'build',
       emptyOutDir: true,
     },
     server: {
