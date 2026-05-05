@@ -8,7 +8,8 @@ const addQuiz = (ln: number, minus: boolean) => (seed: number): Quiz => {
   const min = minus ? -max : 0;
   const x = prng.uniformInt(min, max);
   const y = prng.uniformInt(min, max);
-  const q = `${x} + ${y}`;
+  const yStr = minus && y < 0 ? `(${y})` : y.toString();
+  const q = `${x} + ${yStr}`;
   const a = x + y;
   function wrong(): HtmlString {
     const w = prng.uniformInt(min, max * 2);
@@ -31,7 +32,8 @@ const subQuiz = (ln: number, minus: boolean) => (seed: number): Quiz => {
   const x = prng.uniformInt(min, max);
   const yMin = minus ? -max : x;
   const y = prng.uniformInt(yMin, x);
-  const q = `${x} - ${y}`;
+  const yStr = minus && y < 0 ? `(${y})` : y.toString();
+  const q = `${x} - ${yStr}`;
   const a = x - y;
   function wrong(): HtmlString {
     const w = prng.uniformInt(min, max * 2);
@@ -61,8 +63,8 @@ export default [
     fn: addQuiz(3, false),
   },
   {
-    title: "3桁の足し算 (マイナスあり)",
-    fn: addQuiz(3, true),
+    title: "1桁の足し算 (マイナスあり)",
+    fn: addQuiz(1, true),
   },
   {
     title: "1桁の引き算",
@@ -77,7 +79,7 @@ export default [
     fn: subQuiz(3, false),
   },
   {
-    title: "3桁の引き算 (マイナスあり)",
-    fn: subQuiz(3, true),
+    title: "2桁の引き算 (マイナスあり)",
+    fn: subQuiz(2, true),
   },
 ] satisfies QuizGenerator[];
