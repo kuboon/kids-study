@@ -49,6 +49,29 @@ const subQuiz = (ln: number, minus: boolean) => (seed: number): Quiz => {
   };
 };
 
+const multQuiz = (ln: number, minus: boolean) => (seed: number): Quiz => {
+  const prng = new PRNG(seed);
+  const max = 10 ** ln - 1;
+  const min = minus ? -max : 0;
+  const x = prng.uniformInt(min, max);
+  const y = prng.uniformInt(min, max);
+  const yStr = minus && y < 0 ? `(${y})` : y.toString();
+  const q = `${x} × ${yStr}`;
+  const a = x * y;
+  function wrong(): HtmlString {
+    const w = prng.uniformInt(min, max ** 2 * 2);
+    if (w === a) {
+      return wrong();
+    }
+    return w.toString();
+  }
+  return {
+    q,
+    a: a.toString(),
+    wrong,
+  };
+};
+
 export default [
   {
     title: "1桁の足し算",
@@ -81,5 +104,17 @@ export default [
   {
     title: "2桁の引き算 (マイナスあり)",
     fn: subQuiz(2, true),
+  },
+  {
+    title: "1桁の掛け算",
+    fn: multQuiz(1, false),
+  },
+  {
+    title: "2桁の掛け算",
+    fn: multQuiz(2, false),
+  },
+  {
+    title: "1桁の掛け算 (マイナスあり)",
+    fn: multQuiz(1, true),
   },
 ] satisfies QuizGenerator[];
