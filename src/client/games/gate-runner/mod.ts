@@ -19,11 +19,25 @@ import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTextur
 import type { GameModule, GameMount } from "../types.ts";
 import type { Quiz } from "../../../../quiz/types.ts";
 
-const STAGES_TO_CLEAR = 5;
+const STREAK_TO_CLEAR = 10;
 const INITIAL_CROWD = 30;
+const ENEMY_VISIBLE_MAX = 80;
+// Approach: enemy spawn → march toward player → clash → cleared.
+const FINALE_APPROACH_SPEED = 5;
+const FINALE_CLASH_DURATION = 1.6;
+const FINALE_CLASH_Z = 1.8;
 const LANE_X = 1.6;
 const GATE_SPAWN_Z = 30;
-const SCROLL_SPEED = 8;
+// Forward speed grows steadily while playing and snaps slower on a wrong
+// answer. Min keeps the minimum reasonable; max keeps it playable.
+const SCROLL_SPEED_INITIAL = 7;
+const SCROLL_SPEED_MIN = 4;
+const SCROLL_SPEED_MAX = 16;
+const SCROLL_SPEED_ACCEL = 0.35; // units/sec, applied per second
+const SCROLL_SPEED_PENALTY = 0.5; // multiplier on wrong answer
+const BOOST_MULTIPLIER = 1.7; // ArrowUp / swipe-up speed boost
+const BOOST_SWIPE_DURATION = 0.7; // seconds a single swipe-up lasts
+const SWIPE_UP_PIXELS = 40; // distance threshold to register a swipe-up
 const ROAD_WIDTH = 5;
 const ROAD_LENGTH = 200;
 const CROWD_VISIBLE_MAX = 80;
@@ -58,9 +72,6 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     <div class="absolute top-3 left-1/2 -translate-x-1/2 px-5 py-2 rounded-box bg-base-200/90 shadow-md text-2xl font-bold text-center">
       <span data-q></span>
     </div>
-    <div class="absolute top-3 left-3 px-3 py-1 rounded-box bg-base-200/90 text-sm font-semibold">
-      Score: <span data-score>0</span> / ${STAGES_TO_CLEAR}
-    </div>
     <div class="absolute top-3 right-3 flex gap-2 pointer-events-auto">
       <button data-restart class="btn btn-circle btn-sm" aria-label="やり直し">↻</button>
       <a href="/" class="btn btn-circle btn-sm" aria-label="ホーム">🏠</a>
@@ -76,7 +87,6 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
   container.appendChild(overlay);
 
   const $q = overlay.querySelector("[data-q]") as HTMLElement;
-  const $score = overlay.querySelector("[data-score]") as HTMLElement;
   const $crowd = overlay.querySelector("[data-crowd]") as HTMLElement;
   const $end = overlay.querySelector("[data-end]") as HTMLElement;
   const $endTitle = overlay.querySelector("[data-end-title]") as HTMLElement;
@@ -151,6 +161,25 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     crowdInstances.push(inst);
   }
 
+  // Enemy crowd — same shape, red. Used only in the finale battle.
+  const enemyProto = MeshBuilder.CreateCapsule(
+    "enemy",
+    { radius: 0.18, height: 0.6, tessellation: 8, subdivisions: 1 },
+    scene,
+  );
+  enemyProto.isVisible = false;
+  const enemyMat = new StandardMaterial("enemyMat", scene);
+  enemyMat.diffuseColor = new Color3(0.85, 0.18, 0.22);
+  enemyMat.specularColor = new Color3(0.2, 0.2, 0.2);
+  enemyProto.material = enemyMat;
+
+  const enemyInstances: InstancedMesh[] = [];
+  for (let i = 0; i < ENEMY_VISIBLE_MAX; i++) {
+    const inst = enemyProto.createInstance(`e${i}`);
+    inst.isVisible = false;
+    enemyInstances.push(inst);
+  }
+
   // Gate prototype reused per round (recreated each round to swap text).
   const makeGate = (
     text: string,
@@ -195,29 +224,48 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
 
   // ---- Game state ----------------------------------------------------------
   type FxKind = "none" | "correct" | "wrong";
+  type Phase = "playing" | "finale-approach" | "finale-clash";
+  type Enemy = {
+    count: number;
+    initial: number;
+    z: number;
+    clashT: number;
+  };
   type State = {
     score: number;
+    streak: number;
     crowd: number;
     lane: Lane;
     targetX: number;
     crowdX: number;
+    speed: number;
+    keyBoosting: boolean;
+    swipeBoostT: number;
     gate: Gate | null;
     currentQuiz: Quiz | null;
     seed: number;
     ended: boolean;
+    phase: Phase;
+    enemy: Enemy | null;
     fx: { kind: FxKind; t: number; duration: number };
   };
 
   const state: State = {
     score: 0,
+    streak: 0,
     crowd: INITIAL_CROWD,
     lane: -1,
     targetX: -LANE_X,
     crowdX: -LANE_X,
+    speed: SCROLL_SPEED_INITIAL,
+    keyBoosting: false,
+    swipeBoostT: 0,
     gate: null,
     currentQuiz: null,
     seed: 1,
     ended: false,
+    phase: "playing",
+    enemy: null,
     fx: { kind: "none", t: 0, duration: 0 },
   };
 
@@ -235,8 +283,9 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
   };
 
   const renderHud = () => {
-    if (state.currentQuiz) $q.innerHTML = `${state.currentQuiz.q} = ?`;
-    $score.textContent = String(state.score);
+    if (state.currentQuiz && state.phase === "playing") {
+      $q.innerHTML = `${state.currentQuiz.q} = ?`;
+    }
     $crowd.textContent = String(Math.max(0, state.crowd));
   };
 
@@ -319,9 +368,7 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
   const endGame = (cleared: boolean) => {
     if (state.ended) return;
     state.ended = true;
-    $endTitle.textContent = cleared
-      ? `クリア！スコア ${state.score}`
-      : `ざんねん…スコア ${state.score}`;
+    $endTitle.textContent = cleared ? "クリア！" : "ざんねん…";
     $end.classList.remove("hidden");
     $end.classList.add("flex");
     onComplete?.({ score: state.score, cleared });
@@ -371,7 +418,49 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
       ], { duration: 500, easing: "ease-out" });
     };
     hudPulse($crowd, fg);
-    if (kind === "correct") hudPulse($score, fg);
+  };
+
+  const layoutEnemy = () => {
+    const e = state.enemy;
+    for (let i = 0; i < ENEMY_VISIBLE_MAX; i++) {
+      const inst = enemyInstances[i];
+      if (!e) {
+        inst.isVisible = false;
+        continue;
+      }
+      const visible = Math.min(e.count, ENEMY_VISIBLE_MAX);
+      if (i >= visible) {
+        inst.isVisible = false;
+        continue;
+      }
+      inst.isVisible = true;
+      const ang = (i / Math.max(1, visible)) * Math.PI * 2;
+      const r = 0.4 + Math.sqrt(i / visible) * 0.9;
+      // Enemies are facing toward the player so their cluster is on the
+      // far side of their center point (z + sin offset like player crowd).
+      inst.position.set(
+        Math.cos(ang) * r,
+        0.3,
+        e.z + Math.sin(ang) * r * 0.6,
+      );
+    }
+  };
+
+  const startFinale = () => {
+    // Sweep the current question prompt away.
+    $q.innerHTML = "ラスト！";
+    // Dispose the just-resolved gate (already resolved, sitting at z<=0)
+    disposeGate(state.gate);
+    state.gate = null;
+    state.phase = "finale-approach";
+    // Enemy count: just under the player's crowd → ギリギリ勝てる
+    const initial = Math.max(2, state.crowd - 4);
+    state.enemy = {
+      count: initial,
+      initial,
+      z: 22,
+      clashT: 0,
+    };
   };
 
   const resolveGate = () => {
@@ -380,9 +469,15 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     const picked = state.lane === -1 ? state.gate.left : state.gate.right;
     if (picked.correct) {
       state.score++;
+      state.streak++;
       state.crowd = Math.min(999, state.crowd + 5);
       triggerFx("correct", "+5");
     } else {
+      state.streak = 0;
+      state.speed = Math.max(
+        SCROLL_SPEED_MIN,
+        state.speed * SCROLL_SPEED_PENALTY,
+      );
       const before = state.crowd;
       state.crowd = Math.floor(state.crowd / 2);
       triggerFx("wrong", `-${before - state.crowd}`);
@@ -393,8 +488,8 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
       endGame(false);
       return;
     }
-    if (state.score >= STAGES_TO_CLEAR) {
-      endGame(true);
+    if (state.streak >= STREAK_TO_CLEAR) {
+      startFinale();
       return;
     }
     spawnGate();
@@ -402,12 +497,18 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
 
   const reset = () => {
     state.score = 0;
+    state.streak = 0;
     state.crowd = INITIAL_CROWD;
     state.seed = (Math.random() * 0x7fffffff) | 0;
     state.lane = -1;
     state.targetX = -LANE_X;
     state.crowdX = -LANE_X;
+    state.speed = SCROLL_SPEED_INITIAL;
+    state.keyBoosting = false;
+    state.swipeBoostT = 0;
     state.ended = false;
+    state.phase = "playing";
+    state.enemy = null;
     state.fx.kind = "none";
     state.fx.t = 0;
     for (let i = 0; i < CROWD_VISIBLE_MAX; i++) {
@@ -416,23 +517,51 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     crowdMat.emissiveColor.set(0, 0, 0);
     crowdMat.diffuseColor.copyFrom(CROWD_BASE_COLOR);
     camera.position.copyFrom(camHome);
+    layoutEnemy();
     $end.classList.add("hidden");
     $end.classList.remove("flex");
     spawnGate();
   };
 
   // ---- Input ---------------------------------------------------------------
-  const onKey = (e: KeyboardEvent) => {
+  const onKeyDown = (e: KeyboardEvent) => {
     if (e.key === "ArrowLeft" || e.key === "a") setLane(-1);
     else if (e.key === "ArrowRight" || e.key === "d") setLane(1);
+    else if (e.key === "ArrowUp" || e.key === "w") state.keyBoosting = true;
   };
-  const onPointer = (e: PointerEvent) => {
+  const onKeyUp = (e: KeyboardEvent) => {
+    if (e.key === "ArrowUp" || e.key === "w") state.keyBoosting = false;
+  };
+
+  // Pointer: pointerdown switches lane (snappy). While the gesture is held,
+  // an upward drag past the threshold triggers a one-shot speed boost.
+  let pointerStart: { x: number; y: number } | null = null;
+  let boostedThisGesture = false;
+  const onPointerDown = (e: PointerEvent) => {
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     setLane(x < rect.width / 2 ? -1 : 1);
+    pointerStart = { x: e.clientX, y: e.clientY };
+    boostedThisGesture = false;
   };
-  globalThis.addEventListener("keydown", onKey);
-  canvas.addEventListener("pointerdown", onPointer);
+  const onPointerMove = (e: PointerEvent) => {
+    if (!pointerStart || boostedThisGesture) return;
+    if (e.clientY - pointerStart.y < -SWIPE_UP_PIXELS) {
+      state.swipeBoostT = BOOST_SWIPE_DURATION;
+      boostedThisGesture = true;
+    }
+  };
+  const onPointerEnd = () => {
+    pointerStart = null;
+    boostedThisGesture = false;
+  };
+
+  globalThis.addEventListener("keydown", onKeyDown);
+  globalThis.addEventListener("keyup", onKeyUp);
+  canvas.addEventListener("pointerdown", onPointerDown);
+  canvas.addEventListener("pointermove", onPointerMove);
+  canvas.addEventListener("pointerup", onPointerEnd);
+  canvas.addEventListener("pointercancel", onPointerEnd);
   $restart.addEventListener("click", reset);
   $restartEnd.addEventListener("click", reset);
 
@@ -440,15 +569,67 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
   engine.runRenderLoop(() => {
     const dt = engine.getDeltaTime() / 1000;
 
-    if (!state.ended && state.gate) {
-      const advance = SCROLL_SPEED * dt;
-      state.gate.z -= advance;
-      stripeTex.vOffset = (stripeTex.vOffset - dt * SCROLL_SPEED / 6) % 1;
+    if (!state.ended) {
+      // Decay swipe boost
+      if (state.swipeBoostT > 0) state.swipeBoostT -= dt;
+      const boosting = state.keyBoosting || state.swipeBoostT > 0;
 
-      state.gate.left.mesh.position.z = state.gate.z;
-      state.gate.right.mesh.position.z = state.gate.z;
+      if (state.phase === "playing" && state.gate) {
+        // Gradual speed-up while playing.
+        state.speed = Math.min(
+          SCROLL_SPEED_MAX,
+          state.speed + SCROLL_SPEED_ACCEL * dt,
+        );
+        const eff = state.speed * (boosting ? BOOST_MULTIPLIER : 1);
+        const advance = eff * dt;
+        state.gate.z -= advance;
+        stripeTex.vOffset = (stripeTex.vOffset - dt * eff / 6) % 1;
+        state.gate.left.mesh.position.z = state.gate.z;
+        state.gate.right.mesh.position.z = state.gate.z;
+        if (state.gate.z <= 0) resolveGate();
+      } else if (state.phase === "finale-approach" && state.enemy) {
+        // Keep the road scrolling so the world feels alive while the
+        // enemy army marches in.
+        stripeTex.vOffset = (stripeTex.vOffset - dt * state.speed / 6) % 1;
+        state.enemy.z -= FINALE_APPROACH_SPEED * dt;
+        if (state.enemy.z <= FINALE_CLASH_Z) {
+          state.enemy.z = FINALE_CLASH_Z;
+          state.phase = "finale-clash";
+          state.enemy.clashT = 0;
+          $q.innerHTML = "たたかえ！";
+        }
+      } else if (state.phase === "finale-clash" && state.enemy) {
+        state.enemy.clashT += dt;
+        const k = Math.min(1, state.enemy.clashT / FINALE_CLASH_DURATION);
+        const targetEnemy = Math.round(state.enemy.initial * (1 - k));
+        const drained = state.enemy.count - targetEnemy;
+        if (drained > 0) {
+          state.enemy.count = targetEnemy;
+          // Player loses one for every enemy down — barely above zero
+          // because enemy.initial is set to crowd - 4 in startFinale().
+          state.crowd = Math.max(1, state.crowd - drained);
+          // Each chunk of damage gives a tiny scatter and a red puff
+          for (let i = 0; i < CROWD_VISIBLE_MAX; i++) {
+            scatter[i].x += (Math.random() - 0.5) * 0.4;
+            scatter[i].y += Math.random() * 0.25;
+            scatter[i].z += (Math.random() - 0.5) * 0.3;
+          }
+          crowdMat.emissiveColor.set(0.5, 0.05, 0.0);
+          renderHud();
+        }
+        // Continuous shake during clash, eases out as it ends
+        const shake = (1 - k) * 0.08;
+        camera.position.x = camHome.x + (Math.random() - 0.5) * shake * 2;
+        camera.position.y = camHome.y + (Math.random() - 0.5) * shake * 2;
 
-      if (state.gate.z <= 0) resolveGate();
+        if (state.enemy.count <= 0) {
+          // Cleared! Settle the camera and crowd, fade emissive, end game.
+          camera.position.copyFrom(camHome);
+          crowdMat.emissiveColor.set(0, 0, 0);
+          $q.innerHTML = "🎉";
+          endGame(true);
+        }
+      }
     }
 
     // Advance fx clock
@@ -485,9 +666,11 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
       }
     }
 
-    // Smooth lane transition
+    // During finale lock the player crowd to center for the clash readout
+    if (state.phase !== "playing") state.targetX = 0;
     state.crowdX += (state.targetX - state.crowdX) * Math.min(1, dt * 8);
     layoutCrowd(dt);
+    layoutEnemy();
 
     scene.render();
   });
@@ -500,8 +683,12 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
 
   // ---- Teardown ------------------------------------------------------------
   return () => {
-    globalThis.removeEventListener("keydown", onKey);
-    canvas.removeEventListener("pointerdown", onPointer);
+    globalThis.removeEventListener("keydown", onKeyDown);
+    globalThis.removeEventListener("keyup", onKeyUp);
+    canvas.removeEventListener("pointerdown", onPointerDown);
+    canvas.removeEventListener("pointermove", onPointerMove);
+    canvas.removeEventListener("pointerup", onPointerEnd);
+    canvas.removeEventListener("pointercancel", onPointerEnd);
     globalThis.removeEventListener("resize", onResize);
     engine.stopRenderLoop();
     disposeGate(state.gate);
