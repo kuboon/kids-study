@@ -30,22 +30,11 @@ export function Document(_handle: Handle) {
             <a
               class="btn btn-ghost text-xl"
               href={routes.home.href()}
-              rmx-target="content"
             >
               Kids Study
             </a>
           </div>
           <nav class="navbar-end gap-2">
-            <ul class="menu menu-horizontal px-1">
-              <li>
-                <a href={routes.home.href()} rmx-target="content">Home</a>
-              </li>
-              <li>
-                <a href={routes.hydration.href()} rmx-target="content">
-                  Hydration
-                </a>
-              </li>
-            </ul>
             <div class="dropdown dropdown-end">
               <div
                 tabindex={0}

@@ -20,7 +20,7 @@ const addQuiz = (ln: number, minus: boolean) => (seed: number): Quiz => {
   return {
     q,
     a: a.toString(),
-    wrong
+    wrong,
   };
 };
 
@@ -43,41 +43,41 @@ const subQuiz = (ln: number, minus: boolean) => (seed: number): Quiz => {
   return {
     q,
     a: a.toString(),
-    wrong
+    wrong,
   };
-}
+};
 
 export default [
   {
     title: "1桁の足し算",
-    fn: addQuiz(1, false)
+    fn: addQuiz(1, false),
   },
   {
     title: "2桁の足し算",
-    fn: addQuiz(2, false)
+    fn: addQuiz(2, false),
   },
   {
     title: "3桁の足し算",
-    fn: addQuiz(3, false)
+    fn: addQuiz(3, false),
   },
   {
     title: "3桁の足し算 (マイナスあり)",
-    fn: addQuiz(3, true)
+    fn: addQuiz(3, true),
   },
   {
     title: "1桁の引き算",
-    fn: subQuiz(1, false)
+    fn: subQuiz(1, false),
   },
   {
     title: "2桁の引き算",
-    fn: subQuiz(2, false)
+    fn: subQuiz(2, false),
   },
   {
     title: "3桁の引き算",
-    fn: subQuiz(3, false)
+    fn: subQuiz(3, false),
   },
   {
     title: "3桁の引き算 (マイナスあり)",
-    fn: subQuiz(3, true)
-  }
+    fn: subQuiz(3, true),
+  },
 ] satisfies QuizGenerator[];

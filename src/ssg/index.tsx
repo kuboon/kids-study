@@ -1,8 +1,10 @@
-/** */
 import { Document } from "./layout/document.tsx";
+import { Menu } from "../client/menu.tsx";
 
 export default (
   <Document>
-    <h1 class="text-3xl font-bold underline">Hello world!</h1>
+    <main class="relative w-full overflow-hidden h-[calc(100dvh-4rem)]">
+      <Menu />
+    </main>
   </Document>
 );

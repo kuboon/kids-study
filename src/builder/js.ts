@@ -2,17 +2,15 @@
  * Client-side JS/TSX bundling via `Deno.bundle` (unstable).
  *
  * Each entrypoint under `src/client/` is compiled to a same-named
- * `.js` (with linked sourcemap) under `src/bundled/`.
+ * `.js` (with linked sourcemap) under `dist/`.
  */
 
 const HTML_ENTRIES = [
   "index.html",
-  "hydration.html",
 ] as const;
 
 const JS_ENTRIES = [
-  "counter.tsx",
-  "frame.tsx",
+  "menu.tsx",
 ];
 export async function buildJs(
   { minify = false, write = true }: { minify?: boolean; write?: boolean } = {},

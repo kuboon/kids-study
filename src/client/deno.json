@@ -6,6 +6,7 @@
   },
   "imports": {
     "@remix-run/ui": "npm:@remix-run/ui@^0.1.1",
-    "@remix-run/fetch-router": "npm:@remix-run/fetch-router@0.18.2"
+    "@remix-run/fetch-router": "npm:@remix-run/fetch-router@0.18.2",
+    "@babylonjs/core": "npm:@babylonjs/core@^7"
   }
 }
