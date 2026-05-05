@@ -1,0 +1,5 @@
+{
+  "imports": {
+    "pure-rand": "npm:pure-rand@^8.4.0"
+  }
+}
