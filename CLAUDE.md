@@ -11,8 +11,10 @@
   - `layout/document.tsx` — ナビ付きシェル
   - `layout/routes.ts` — ルート定義
 - `src/client/` — クライアント側コード
-  - `entry.ts` — `@remix-run/ui` の `run()` ブートストラップ（HTML から読まれる）
-  - `menu.tsx` — ランチャの `clientEntry`（ゲーム種別ドロップダウン + クイズ一覧）
+  - `entry.ts` — `@remix-run/ui` の `run()` ブートストラップ（HTML
+    から読まれる）
+  - `menu.tsx` — ランチャの `clientEntry`（ゲーム種別ドロップダウン +
+    クイズ一覧）
   - `games/<name>/mod.ts` — 各ゲーム本体（`GameModule` を default export）
   - `games/types.ts` — `GameModule` / `GameMount` IF
 - `src/builder/` — `Deno.bundle` で JS、`@kuboon/tailwindcss-deno` で Tailwind
@@ -42,8 +44,8 @@ deno task check    # check + lint + fmt
 - `quiz/types.ts`
   - `Quiz` — `{ q: HtmlString, a: HtmlString, wrong(): HtmlString }`
   - `QuizGenerator` — `{ title: string, fn(seed: number): Quiz }`
-- `quiz/prng.ts` — シード可能な PRNG（pure-rand ベース）。`fn(seed)` は同じ
-  seed なら同じ問題を返すように決定的に実装する
+- `quiz/prng.ts` — シード可能な PRNG（pure-rand ベース）。`fn(seed)` は同じ seed
+  なら同じ問題を返すように決定的に実装する
 - `quiz/<topic>.ts` または `quiz/<topic>/<n>.ts` — 教科別ファイル。
   `QuizGenerator[]` を default export（タイトル違いの複数バリエーションを
   並べてよい）
@@ -61,7 +63,7 @@ deno task check    # check + lint + fmt
 
    export const mount: GameMount = (container, { quiz, onComplete }) => {
      // container に canvas / HTML を append。teardown 関数を返す
-     return () => { /* dispose */ };
+     return () => {/* dispose */};
    };
 
    const game: GameModule = { title: "...", mount };
@@ -78,8 +80,8 @@ deno task check    # check + lint + fmt
 3. これだけ。SSG ページ・ナビ・ルート・`JS_ENTRIES` は触らない（ゲームは
    `menu.js` 内に dynamic import 経由で取り込まれる）。
 
-`<Frame>` は SSG 環境では機能しないので使わない。インタラクティブな UI は
-すべて `clientEntry` 経由でハイドレートする。
+`<Frame>` は SSG 環境では機能しないので使わない。インタラクティブな UI は すべて
+`clientEntry` 経由でハイドレートする。
 
 ## コーディング規約
 

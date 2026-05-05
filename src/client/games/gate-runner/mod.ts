@@ -13,6 +13,7 @@ import { Color3, Color4 } from "@babylonjs/core/Maths/math.color.js";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder.js";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh.js";
 import type { InstancedMesh } from "@babylonjs/core/Meshes/instancedMesh.js";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode.js";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial.js";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture.js";
 
@@ -21,11 +22,12 @@ import type { Quiz } from "../../../../quiz/types.ts";
 
 const STREAK_TO_CLEAR = 10;
 const INITIAL_CROWD = 30;
-const ENEMY_VISIBLE_MAX = 80;
-// Approach: enemy spawn → march toward player → clash → cleared.
+// Approach: goal arch spawns far ahead → glides toward player → tape breaks → cleared.
 const FINALE_APPROACH_SPEED = 5;
-const FINALE_CLASH_DURATION = 1.6;
-const FINALE_CLASH_Z = 1.8;
+const FINALE_BREAK_DURATION = 1.4;
+const FINALE_BREAK_Z = 1.4;
+const GOAL_ARCH_HEIGHT = 3.4;
+const GOAL_TAPE_Y = 1.05;
 const LANE_X = 1.6;
 const GATE_SPAWN_Z = 30;
 // Forward speed grows steadily while playing and snaps slower on a wrong
@@ -161,24 +163,94 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     crowdInstances.push(inst);
   }
 
-  // Enemy crowd — same shape, red. Used only in the finale battle.
-  const enemyProto = MeshBuilder.CreateCapsule(
-    "enemy",
-    { radius: 0.18, height: 0.6, tessellation: 8, subdivisions: 1 },
+  // Goal arch + breakable tape — used only in the finale.
+  const goalRoot = new TransformNode("goalRoot", scene);
+  goalRoot.setEnabled(false);
+
+  const postMat = new StandardMaterial("postMat", scene);
+  postMat.diffuseColor = new Color3(1.0, 0.85, 0.22);
+  postMat.specularColor = new Color3(0.05, 0.05, 0.05);
+
+  const postL = MeshBuilder.CreateCylinder(
+    "postL",
+    { diameter: 0.3, height: GOAL_ARCH_HEIGHT, tessellation: 14 },
     scene,
   );
-  enemyProto.isVisible = false;
-  const enemyMat = new StandardMaterial("enemyMat", scene);
-  enemyMat.diffuseColor = new Color3(0.85, 0.18, 0.22);
-  enemyMat.specularColor = new Color3(0.2, 0.2, 0.2);
-  enemyProto.material = enemyMat;
+  postL.material = postMat;
+  postL.position.set(-2.6, GOAL_ARCH_HEIGHT / 2, 0);
+  postL.parent = goalRoot;
 
-  const enemyInstances: InstancedMesh[] = [];
-  for (let i = 0; i < ENEMY_VISIBLE_MAX; i++) {
-    const inst = enemyProto.createInstance(`e${i}`);
-    inst.isVisible = false;
-    enemyInstances.push(inst);
+  const postR = MeshBuilder.CreateCylinder(
+    "postR",
+    { diameter: 0.3, height: GOAL_ARCH_HEIGHT, tessellation: 14 },
+    scene,
+  );
+  postR.material = postMat;
+  postR.position.set(2.6, GOAL_ARCH_HEIGHT / 2, 0);
+  postR.parent = goalRoot;
+
+  const bannerMat = new StandardMaterial("bannerMat", scene);
+  const bannerTex = new DynamicTexture(
+    "bannerTex",
+    { width: 1024, height: 256 },
+    scene,
+    false,
+  );
+  const bctx = bannerTex.getContext() as unknown as CanvasRenderingContext2D;
+  bctx.fillStyle = "#e23a4f";
+  bctx.fillRect(0, 0, 1024, 256);
+  bctx.strokeStyle = "rgba(255,255,255,0.18)";
+  bctx.lineWidth = 14;
+  for (let x = -200; x < 1300; x += 60) {
+    bctx.beginPath();
+    bctx.moveTo(x, -10);
+    bctx.lineTo(x + 300, 270);
+    bctx.stroke();
   }
+  bctx.fillStyle = "#ffffff";
+  bctx.font = "bold 180px sans-serif";
+  bctx.textAlign = "center";
+  bctx.textBaseline = "middle";
+  bctx.fillText("ゴール", 512, 138);
+  bannerTex.update(false);
+  bannerTex.vScale = -1;
+  bannerTex.vOffset = 1;
+  bannerMat.diffuseTexture = bannerTex;
+  bannerMat.emissiveColor = new Color3(0.4, 0.1, 0.15);
+  bannerMat.specularColor = new Color3(0, 0, 0);
+
+  const banner = MeshBuilder.CreateBox(
+    "banner",
+    { width: 5.4, height: 0.8, depth: 0.18 },
+    scene,
+  );
+  banner.material = bannerMat;
+  banner.position.set(0, GOAL_ARCH_HEIGHT - 0.45, 0);
+  banner.parent = goalRoot;
+
+  // Tape: two halves meeting at center. On break they slide outward and fade.
+  const tapeMat = new StandardMaterial("tapeMat", scene);
+  tapeMat.diffuseColor = new Color3(0.95, 0.3, 0.42);
+  tapeMat.emissiveColor = new Color3(0.45, 0.1, 0.15);
+  tapeMat.specularColor = new Color3(0, 0, 0);
+
+  const tapeL = MeshBuilder.CreateBox(
+    "tapeL",
+    { width: 2.6, height: 0.1, depth: 0.05 },
+    scene,
+  );
+  tapeL.material = tapeMat;
+  tapeL.position.set(-1.3, GOAL_TAPE_Y, 0);
+  tapeL.parent = goalRoot;
+
+  const tapeR = MeshBuilder.CreateBox(
+    "tapeR",
+    { width: 2.6, height: 0.1, depth: 0.05 },
+    scene,
+  );
+  tapeR.material = tapeMat;
+  tapeR.position.set(1.3, GOAL_TAPE_Y, 0);
+  tapeR.parent = goalRoot;
 
   // Gate prototype reused per round (recreated each round to swap text).
   const makeGate = (
@@ -224,12 +296,11 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
 
   // ---- Game state ----------------------------------------------------------
   type FxKind = "none" | "correct" | "wrong";
-  type Phase = "playing" | "finale-approach" | "finale-clash";
-  type Enemy = {
-    count: number;
-    initial: number;
+  type Phase = "playing" | "finale-approach" | "finale-break";
+  type Goal = {
     z: number;
-    clashT: number;
+    breakT: number;
+    broken: boolean;
   };
   type State = {
     score: number;
@@ -246,7 +317,7 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     seed: number;
     ended: boolean;
     phase: Phase;
-    enemy: Enemy | null;
+    goal: Goal | null;
     fx: { kind: FxKind; t: number; duration: number };
   };
 
@@ -265,7 +336,7 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     seed: 1,
     ended: false,
     phase: "playing",
-    enemy: null,
+    goal: null,
     fx: { kind: "none", t: 0, duration: 0 },
   };
 
@@ -420,47 +491,56 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     hudPulse($crowd, fg);
   };
 
-  const layoutEnemy = () => {
-    const e = state.enemy;
-    for (let i = 0; i < ENEMY_VISIBLE_MAX; i++) {
-      const inst = enemyInstances[i];
-      if (!e) {
-        inst.isVisible = false;
-        continue;
-      }
-      const visible = Math.min(e.count, ENEMY_VISIBLE_MAX);
-      if (i >= visible) {
-        inst.isVisible = false;
-        continue;
-      }
-      inst.isVisible = true;
-      const ang = (i / Math.max(1, visible)) * Math.PI * 2;
-      const r = 0.4 + Math.sqrt(i / visible) * 0.9;
-      // Enemies are facing toward the player so their cluster is on the
-      // far side of their center point (z + sin offset like player crowd).
-      inst.position.set(
-        Math.cos(ang) * r,
-        0.3,
-        e.z + Math.sin(ang) * r * 0.6,
-      );
+  const spawnConfetti = () => {
+    const colors = [
+      "#f87171",
+      "#fbbf24",
+      "#34d399",
+      "#60a5fa",
+      "#a78bfa",
+      "#fb7185",
+      "#facc15",
+    ];
+    const N = 70;
+    for (let i = 0; i < N; i++) {
+      const piece = document.createElement("div");
+      const color = colors[i % colors.length];
+      const w = 6 + Math.random() * 8;
+      const h = w * (0.3 + Math.random() * 0.4);
+      piece.style.cssText =
+        `position:absolute;left:50%;top:30%;width:${w}px;height:${h}px;` +
+        `background:${color};border-radius:1px;pointer-events:none;z-index:5;`;
+      overlay.appendChild(piece);
+      const dx = (Math.random() - 0.5) * 700;
+      const dy = 200 + Math.random() * 400;
+      const rot = (Math.random() - 0.5) * 900;
+      const dur = 1400 + Math.random() * 900;
+      piece.animate([
+        { transform: "translate(-50%, 0) rotate(0deg)", opacity: 1 },
+        {
+          transform:
+            `translate(calc(-50% + ${dx}px), ${dy}px) rotate(${rot}deg)`,
+          opacity: 0,
+        },
+      ], { duration: dur, easing: "cubic-bezier(0.2, 0.6, 0.4, 1)" }).finished
+        .then(() => piece.remove(), () => piece.remove());
     }
   };
 
   const startFinale = () => {
-    // Sweep the current question prompt away.
     $q.innerHTML = "ラスト！";
-    // Dispose the just-resolved gate (already resolved, sitting at z<=0)
     disposeGate(state.gate);
     state.gate = null;
     state.phase = "finale-approach";
-    // Enemy count: just under the player's crowd → ギリギリ勝てる
-    const initial = Math.max(2, state.crowd - 4);
-    state.enemy = {
-      count: initial,
-      initial,
-      z: 22,
-      clashT: 0,
-    };
+    state.goal = { z: 22, breakT: 0, broken: false };
+    // Reset goal visuals from any prior run.
+    tapeL.position.set(-1.3, GOAL_TAPE_Y, 0);
+    tapeR.position.set(1.3, GOAL_TAPE_Y, 0);
+    tapeL.rotation.z = 0;
+    tapeR.rotation.z = 0;
+    tapeMat.alpha = 1;
+    goalRoot.position.z = state.goal.z;
+    goalRoot.setEnabled(true);
   };
 
   const resolveGate = () => {
@@ -508,7 +588,7 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     state.swipeBoostT = 0;
     state.ended = false;
     state.phase = "playing";
-    state.enemy = null;
+    state.goal = null;
     state.fx.kind = "none";
     state.fx.t = 0;
     for (let i = 0; i < CROWD_VISIBLE_MAX; i++) {
@@ -517,7 +597,8 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     crowdMat.emissiveColor.set(0, 0, 0);
     crowdMat.diffuseColor.copyFrom(CROWD_BASE_COLOR);
     camera.position.copyFrom(camHome);
-    layoutEnemy();
+    goalRoot.setEnabled(false);
+    tapeMat.alpha = 1;
     $end.classList.add("hidden");
     $end.classList.remove("flex");
     spawnGate();
@@ -587,45 +668,39 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
         state.gate.left.mesh.position.z = state.gate.z;
         state.gate.right.mesh.position.z = state.gate.z;
         if (state.gate.z <= 0) resolveGate();
-      } else if (state.phase === "finale-approach" && state.enemy) {
-        // Keep the road scrolling so the world feels alive while the
-        // enemy army marches in.
+      } else if (state.phase === "finale-approach" && state.goal) {
+        // Keep the road scrolling so the world feels alive as the goal
+        // arch glides in from the distance.
         stripeTex.vOffset = (stripeTex.vOffset - dt * state.speed / 6) % 1;
-        state.enemy.z -= FINALE_APPROACH_SPEED * dt;
-        if (state.enemy.z <= FINALE_CLASH_Z) {
-          state.enemy.z = FINALE_CLASH_Z;
-          state.phase = "finale-clash";
-          state.enemy.clashT = 0;
-          $q.innerHTML = "たたかえ！";
+        state.goal.z -= FINALE_APPROACH_SPEED * dt;
+        goalRoot.position.z = state.goal.z;
+        if (state.goal.z <= FINALE_BREAK_Z) {
+          state.goal.z = FINALE_BREAK_Z;
+          goalRoot.position.z = FINALE_BREAK_Z;
+          state.phase = "finale-break";
+          state.goal.breakT = 0;
+          $q.innerHTML = "ゴール！";
+          spawnConfetti();
+          // Celebrate with the same green pulse used for correct answers.
+          state.fx.kind = "correct";
+          state.fx.t = 0;
+          state.fx.duration = 0.8;
         }
-      } else if (state.phase === "finale-clash" && state.enemy) {
-        state.enemy.clashT += dt;
-        const k = Math.min(1, state.enemy.clashT / FINALE_CLASH_DURATION);
-        const targetEnemy = Math.round(state.enemy.initial * (1 - k));
-        const drained = state.enemy.count - targetEnemy;
-        if (drained > 0) {
-          state.enemy.count = targetEnemy;
-          // Player loses one for every enemy down — barely above zero
-          // because enemy.initial is set to crowd - 4 in startFinale().
-          state.crowd = Math.max(1, state.crowd - drained);
-          // Each chunk of damage gives a tiny scatter and a red puff
-          for (let i = 0; i < CROWD_VISIBLE_MAX; i++) {
-            scatter[i].x += (Math.random() - 0.5) * 0.4;
-            scatter[i].y += Math.random() * 0.25;
-            scatter[i].z += (Math.random() - 0.5) * 0.3;
-          }
-          crowdMat.emissiveColor.set(0.5, 0.05, 0.0);
-          renderHud();
-        }
-        // Continuous shake during clash, eases out as it ends
-        const shake = (1 - k) * 0.08;
-        camera.position.x = camHome.x + (Math.random() - 0.5) * shake * 2;
-        camera.position.y = camHome.y + (Math.random() - 0.5) * shake * 2;
-
-        if (state.enemy.count <= 0) {
-          // Cleared! Settle the camera and crowd, fade emissive, end game.
+      } else if (state.phase === "finale-break" && state.goal) {
+        state.goal.breakT += dt;
+        const k = Math.min(1, state.goal.breakT / FINALE_BREAK_DURATION);
+        // Tape halves slide outward and rotate as they're torn apart.
+        const slide = k * 1.6;
+        tapeL.position.x = -1.3 - slide;
+        tapeR.position.x = 1.3 + slide;
+        tapeL.rotation.z = -k * 0.6;
+        tapeR.rotation.z = k * 0.6;
+        tapeMat.alpha = 1 - k;
+        // Brief forward zoom for emphasis (no shake — it's a happy moment).
+        const zoom = Math.sin(Math.PI * k) * 0.6;
+        camera.position.z = camHome.z + zoom;
+        if (state.goal.breakT >= FINALE_BREAK_DURATION) {
           camera.position.copyFrom(camHome);
-          crowdMat.emissiveColor.set(0, 0, 0);
           $q.innerHTML = "🎉";
           endGame(true);
         }
@@ -666,11 +741,10 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
       }
     }
 
-    // During finale lock the player crowd to center for the clash readout
+    // During finale lock the player crowd to center under the goal arch.
     if (state.phase !== "playing") state.targetX = 0;
     state.crowdX += (state.targetX - state.crowdX) * Math.min(1, dt * 8);
     layoutCrowd(dt);
-    layoutEnemy();
 
     scene.render();
   });
