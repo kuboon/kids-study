@@ -1,13 +1,6 @@
-import { PRNG } from "../prng.ts";
-import type { HtmlString, Quiz, QuizGenerator } from "../types.ts";
+import type { QuizGenerator } from "../types.ts";
+import { type KanjiEntry, makeKanjiQuiz } from "./common.ts";
 
-type KanjiEntry = {
-  qPre: string;
-  q: string;
-  qPost: string;
-  a: string;
-  wrongs: string[];
-};
 const KanjiList = [
   // 覚: o さめる(覚める), x きめる(決める), x つめる(詰める), x とめる(止める)
   { qPre: "", q: "覚", qPost: "める", a: "さ", wrongs: ["き", "つ", "と"] },
@@ -356,27 +349,6 @@ const KanjiList = [
   { qPre: "", q: "挙", qPost: "げる", a: "あ", wrongs: ["な", "つ", "の"] },
 ] satisfies KanjiEntry[];
 
-function kanjiQuiz(seed: number): Quiz {
-  const prng = new PRNG(seed);
-  const idx = prng.uniformInt(0, KanjiList.length - 1);
-  const { qPre, q, qPost, a, wrongs } = KanjiList[idx];
-  function wrong(): HtmlString {
-    const w = prng.uniformInt(0, wrongs.length - 1);
-    if (wrongs[w] === a) {
-      return wrong();
-    }
-    return `${wrongs[w]}${qPost}`;
-  }
-  return {
-    q: `${qPre}[${q}]${qPost}`,
-    a: `${a}${qPost}`,
-    wrong,
-  };
-}
-
 export default [
-  {
-    title: "4年生の漢字",
-    fn: kanjiQuiz,
-  },
+  { title: "4年生の漢字", fn: makeKanjiQuiz(KanjiList) },
 ] satisfies QuizGenerator[];

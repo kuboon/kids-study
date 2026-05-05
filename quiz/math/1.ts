@@ -59,7 +59,9 @@ const multQuiz = (ln: number, minus: boolean) => (seed: number): Quiz => {
   const q = `${x} × ${yStr}`;
   const a = x * y;
   function wrong(): HtmlString {
-    const w = prng.uniformInt(min, max ** 2 * 2);
+    const dx = prng.uniformInt(-1, 1);
+    const dy = prng.uniformInt(-1, 1);
+    const w = (x + dx) * (y + dy);
     if (w === a) {
       return wrong();
     }
