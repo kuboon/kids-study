@@ -1,35 +1,375 @@
 import { PRNG } from "../prng.ts";
 import type { HtmlString, Quiz, QuizGenerator } from "../types.ts";
 
+type KanjiEntry = {
+  qPre: string;
+  q: string;
+  qPost: string;
+  a: string;
+  wrongs: string[];
+};
 const KanjiList = [
-  { kanji: "覚める", yomi: "さめる", wrong: ["きめる", "つめる", "とめる"] },
+  // 覚: o さめる(覚める), x きめる(決める), x つめる(詰める), x とめる(止める)
+  { qPre: "", q: "覚", qPost: "める", a: "さ", wrongs: ["き", "つ", "と"] },
   {
-    kanji: "試みる",
-    yomi: "こころみる",
-    wrong: ["ためみる", "とめみる", "とどめる"],
+    qPre: "",
+    q: "覚",
+    qPost: "える",
+    a: "おぼ",
+    wrongs: ["おし", "かぞ", "あた"],
   },
-  { kanji: "頼る", yomi: "たよる", wrong: ["よりる", "とよる", "とよれる"] },
-  { kanji: "頼む", yomi: "たのむ", wrong: ["よりむ", "とよむ", "もとむ"] },
+  { qPre: "", q: "覚", qPost: "ます", a: "さ", wrongs: ["はげ", "す", "おぼ"] },
   {
-    kanji: "頼もしい",
-    yomi: "たのもしい",
-    wrong: ["よりもしい", "とよもしい", "あさもしい"],
+    qPre: "",
+    q: "試",
+    qPost: "みる",
+    a: "こころ",
+    wrongs: ["ため", "た", "とど"],
   },
-];
+  {
+    qPre: "",
+    q: "試",
+    qPost: "す",
+    a: "ため",
+    wrongs: ["こころ", "うつ", "なお"],
+  },
+  {
+    qPre: "",
+    q: "頼",
+    qPost: "る",
+    a: "たよ",
+    wrongs: ["より", "とよ", "もと"],
+  },
+  {
+    qPre: "",
+    q: "頼",
+    qPost: "む",
+    a: "たの",
+    wrongs: ["より", "とよ", "もと"],
+  },
+  {
+    qPre: "",
+    q: "頼",
+    qPost: "もしい",
+    a: "たの",
+    wrongs: ["より", "とよ", "あさ"],
+  },
+  // 便り: 頼り と同じ「たより」と読む
+  {
+    qPre: "",
+    q: "便",
+    qPost: "り",
+    a: "たよ",
+    wrongs: ["より", "わた", "ゆず"],
+  },
+
+  // 改める: あらた+める（3字読み）
+  {
+    qPre: "",
+    q: "改",
+    qPost: "める",
+    a: "あらた",
+    wrongs: ["たし", "ふか", "せ"],
+  },
+  {
+    qPre: "",
+    q: "加",
+    qPost: "える",
+    a: "くわ",
+    wrongs: ["あた", "おし", "おぼ"],
+  },
+  {
+    qPre: "",
+    q: "求",
+    qPost: "める",
+    a: "もと",
+    wrongs: ["あつ", "すす", "あらた"],
+  },
+
+  // 〜う で終わる動詞群（3字読みが多い）
+  {
+    qPre: "",
+    q: "失",
+    qPost: "う",
+    a: "うしな",
+    wrongs: ["やしな", "まよ", "あらそ"],
+  },
+  {
+    qPre: "",
+    q: "養",
+    qPost: "う",
+    a: "やしな",
+    wrongs: ["うしな", "たたか", "わら"],
+  },
+  {
+    qPre: "",
+    q: "戦",
+    qPost: "う",
+    a: "たたか",
+    wrongs: ["あらそ", "やぶ", "うしな"],
+  },
+  {
+    qPre: "",
+    q: "争",
+    qPost: "う",
+    a: "あらそ",
+    wrongs: ["たたか", "うしな", "やしな"],
+  },
+  {
+    qPre: "",
+    q: "笑",
+    qPost: "う",
+    a: "わら",
+    wrongs: ["うしな", "やしな", "あらそ"],
+  },
+  {
+    qPre: "",
+    q: "祝",
+    qPost: "う",
+    a: "いわ",
+    wrongs: ["わら", "うしな", "やしな"],
+  },
+
+  // 必ず: 唯一の訓読み
+  {
+    qPre: "",
+    q: "必",
+    qPost: "ず",
+    a: "かなら",
+    wrongs: ["ひさ", "さき", "おさ"],
+  },
+
+  // 省みる: かえり+みる（試みる との混同に注意）
+  {
+    qPre: "",
+    q: "省",
+    qPost: "みる",
+    a: "かえり",
+    wrongs: ["こころ", "かんが", "ため"],
+  },
+  { qPre: "", q: "省", qPost: "く", a: "はぶ", wrongs: ["かえり", "ぬ", "の"] },
+
+  // 〜やか / 〜ましい
+  {
+    qPre: "",
+    q: "健",
+    qPost: "やか",
+    a: "すこ",
+    wrongs: ["なご", "すみ", "ささ"],
+  },
+  {
+    qPre: "",
+    q: "勇",
+    qPost: "ましい",
+    a: "いさ",
+    wrongs: ["たくま", "たの", "やさ"],
+  },
+  {
+    qPre: "",
+    q: "望",
+    qPost: "ましい",
+    a: "のぞ",
+    wrongs: ["うらや", "たの", "やさ"],
+  },
+  {
+    qPre: "",
+    q: "望",
+    qPost: "む",
+    a: "のぞ",
+    wrongs: ["たの", "もと", "うら"],
+  },
+
+  // 唱える: とな+える
+  {
+    qPre: "",
+    q: "唱",
+    qPost: "える",
+    a: "とな",
+    wrongs: ["か", "おぼ", "おし"],
+  },
+
+  // 連: つら(なる/ねる) と つ(れる) で読みが変わる
+  {
+    qPre: "",
+    q: "連",
+    qPost: "なる",
+    a: "つら",
+    wrongs: ["かさ", "おも", "つの"],
+  },
+  {
+    qPre: "",
+    q: "連",
+    qPost: "ねる",
+    a: "つら",
+    wrongs: ["かさ", "たば", "つ"],
+  },
+  { qPre: "", q: "連", qPost: "れる", a: "つ", wrongs: ["わか", "はな", "や"] },
+
+  // 散: ち+(る/らかす/らす)
+  { qPre: "", q: "散", qPost: "る", a: "ち", wrongs: ["お", "ふ", "き"] },
+  { qPre: "", q: "散", qPost: "らかす", a: "ち", wrongs: ["あ", "ば", "は"] },
+  { qPre: "", q: "散", qPost: "らす", a: "ち", wrongs: ["な", "た", "ば"] },
+
+  // 治: おさ(める/まる) と なお(す/る) で読みが変わる
+  {
+    qPre: "",
+    q: "治",
+    qPost: "める",
+    a: "おさ",
+    wrongs: ["なお", "もと", "あらた"],
+  },
+  { qPre: "", q: "治", qPost: "る", a: "なお", wrongs: ["おさ", "う", "もど"] },
+  {
+    qPre: "",
+    q: "治",
+    qPost: "す",
+    a: "なお",
+    wrongs: ["おさ", "ため", "たし"],
+  },
+
+  {
+    qPre: "",
+    q: "浅",
+    qPost: "い",
+    a: "あさ",
+    wrongs: ["うす", "ふか", "ひく"],
+  },
+  {
+    qPre: "",
+    q: "努",
+    qPost: "める",
+    a: "つと",
+    wrongs: ["はたら", "もと", "すす"],
+  },
+  {
+    qPre: "",
+    q: "働",
+    qPost: "く",
+    a: "はたら",
+    wrongs: ["うご", "つと", "あゆ"],
+  },
+  {
+    qPre: "",
+    q: "敗",
+    qPost: "れる",
+    a: "やぶ",
+    wrongs: ["わ", "たお", "つぶ"],
+  },
+  {
+    qPre: "",
+    q: "別",
+    qPost: "れる",
+    a: "わか",
+    wrongs: ["やぶ", "はな", "つぶ"],
+  },
+
+  // 折: お+(る/れる)
+  { qPre: "", q: "折", qPost: "れる", a: "お", wrongs: ["わ", "やぶ", "き"] },
+  { qPre: "", q: "折", qPost: "る", a: "お", wrongs: ["き", "わ", "ち"] },
+
+  // 焼: や+(く/ける)
+  { qPre: "", q: "焼", qPost: "ける", a: "や", wrongs: ["と", "あ", "ま"] },
+  { qPre: "", q: "焼", qPost: "く", a: "や", wrongs: ["た", "ふ", "ひ"] },
+
+  // 静: しず+(か/まる/める)
+  {
+    qPre: "",
+    q: "静",
+    qPost: "か",
+    a: "しず",
+    wrongs: ["なご", "ゆた", "おだ"],
+  },
+  {
+    qPre: "",
+    q: "静",
+    qPost: "まる",
+    a: "しず",
+    wrongs: ["とど", "おさ", "うず"],
+  },
+
+  // 積: つ+(む/もる)
+  { qPre: "", q: "積", qPost: "もる", a: "つ", wrongs: ["た", "こ", "ふ"] },
+  { qPre: "", q: "積", qPost: "む", a: "つ", wrongs: ["か", "こ", "ふ"] },
+
+  { qPre: "", q: "続", qPost: "ける", a: "つづ", wrongs: ["あ", "う", "さ"] },
+  {
+    qPre: "",
+    q: "続",
+    qPost: "く",
+    a: "つづ",
+    wrongs: ["はたら", "あ", "ひら"],
+  },
+
+  // 伝: つた+(わる/える)
+  {
+    qPre: "",
+    q: "伝",
+    qPost: "わる",
+    a: "つた",
+    wrongs: ["か", "まじ", "そな"],
+  },
+  {
+    qPre: "",
+    q: "伝",
+    qPost: "える",
+    a: "つた",
+    wrongs: ["か", "おし", "あた"],
+  },
+
+  // 変: か+(わる/える)
+  {
+    qPre: "",
+    q: "変",
+    qPost: "わる",
+    a: "か",
+    wrongs: ["まじ", "つた", "おわ"],
+  },
+  {
+    qPre: "",
+    q: "変",
+    qPost: "える",
+    a: "か",
+    wrongs: ["つた", "あた", "おし"],
+  },
+
+  { qPre: "", q: "包", qPost: "む", a: "つつ", wrongs: ["こ", "ふく", "たた"] },
+  { qPre: "", q: "浴", qPost: "びる", a: "あ", wrongs: ["の", "や", "は"] },
+
+  // 老: お(いる) と ふ(ける) で読みが変わる
+  { qPre: "", q: "老", qPost: "いる", a: "お", wrongs: ["は", "ふ", "い"] },
+  { qPre: "", q: "老", qPost: "ける", a: "ふ", wrongs: ["お", "や", "あ"] },
+
+  // 競: きそ(う) と せ(る) で読みが変わる
+  {
+    qPre: "",
+    q: "競",
+    qPost: "う",
+    a: "きそ",
+    wrongs: ["たたか", "あらそ", "なら"],
+  },
+  { qPre: "", q: "競", qPost: "る", a: "せ", wrongs: ["は", "き", "の"] },
+
+  // 結ぶ: むす+ぶ
+  { qPre: "", q: "結", qPost: "ぶ", a: "むす", wrongs: ["よ", "つ", "とら"] },
+
+  // 挙げる: あ+げる
+  { qPre: "", q: "挙", qPost: "げる", a: "あ", wrongs: ["な", "つ", "の"] },
+] satisfies KanjiEntry[];
+
 function kanjiQuiz(seed: number): Quiz {
   const prng = new PRNG(seed);
   const idx = prng.uniformInt(0, KanjiList.length - 1);
-  const { kanji, yomi, wrong: wrongList } = KanjiList[idx];
+  const { qPre, q, qPost, a, wrongs } = KanjiList[idx];
   function wrong(): HtmlString {
-    const w = prng.uniformInt(0, wrongList.length - 1);
-    if (wrongList[w] === yomi) {
+    const w = prng.uniformInt(0, wrongs.length - 1);
+    if (wrongs[w] === a) {
       return wrong();
     }
-    return wrongList[w];
+    return `${wrongs[w]}${qPost}`;
   }
   return {
-    q: kanji,
-    a: yomi,
+    q: `${qPre}[${q}]${qPost}`,
+    a: `${a}${qPost}`,
     wrong,
   };
 }
