@@ -303,9 +303,18 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     ctx.fillStyle = "rgba(40, 60, 120, 0.15)";
     ctx.fillRect(0, 0, 512, 256);
     ctx.fillStyle = "#0e1a3a";
-    ctx.font = "bold 130px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
+    // Shrink font when the string is long (e.g. 5-character kanji choices)
+    // so it never overflows the gate face.
+    const MAX_TEXT_WIDTH = 460;
+    const BASE_FONT = 130;
+    ctx.font = `bold ${BASE_FONT}px sans-serif`;
+    const measured = ctx.measureText(text).width;
+    if (measured > MAX_TEXT_WIDTH) {
+      const fontSize = Math.floor(BASE_FONT * MAX_TEXT_WIDTH / measured);
+      ctx.font = `bold ${fontSize}px sans-serif`;
+    }
     ctx.fillText(text, 256, 130);
     tex.update(false);
     // Box's -Z face samples V inverted relative to canvas Y; flip so the
@@ -380,7 +389,7 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
 
   const renderHud = () => {
     if (state.currentQuiz && state.phase === "playing") {
-      $q.innerHTML = `${state.currentQuiz.q} = ?`;
+      $q.innerHTML = state.currentQuiz.q;
     }
     $crowd.textContent = String(Math.max(0, state.crowd));
   };
@@ -466,13 +475,30 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     renderHud();
   };
 
+  let endRevealTimer: number | null = null;
   const endGame = (cleared: boolean) => {
     if (state.ended) return;
     state.ended = true;
-    $endTitle.textContent = cleared ? "クリア！" : "ざんねん…";
-    $end.classList.remove("hidden");
-    $end.classList.add("flex");
     onComplete?.({ score: state.score, cleared });
+
+    if (cleared) {
+      // Goal tape + confetti already convey the win — let the celebration
+      // breathe before the modal slides in. No "クリア" text needed.
+      $endTitle.textContent = "";
+      endRevealTimer = globalThis.setTimeout(() => {
+        endRevealTimer = null;
+        $end.classList.remove("hidden");
+        $end.classList.add("flex");
+        $end.animate(
+          [{ opacity: 0 }, { opacity: 1 }],
+          { duration: 1200, easing: "ease-out", fill: "both" },
+        );
+      }, 2500);
+    } else {
+      $endTitle.textContent = "ざんねん…";
+      $end.classList.remove("hidden");
+      $end.classList.add("flex");
+    }
   };
 
   const triggerFx = (kind: "correct" | "wrong", deltaText: string) => {
@@ -632,8 +658,13 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     chickenSprite.isVisible = false;
     walkClock = 0;
     welcomeClock = 0;
+    if (endRevealTimer !== null) {
+      globalThis.clearTimeout(endRevealTimer);
+      endRevealTimer = null;
+    }
     $end.classList.add("hidden");
     $end.classList.remove("flex");
+    $end.style.opacity = "";
     spawnGate();
   };
 
@@ -792,6 +823,7 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     canvas.removeEventListener("pointerup", onPointerEnd);
     canvas.removeEventListener("pointercancel", onPointerEnd);
     globalThis.removeEventListener("resize", onResize);
+    if (endRevealTimer !== null) globalThis.clearTimeout(endRevealTimer);
     engine.stopRenderLoop();
     disposeGate(state.gate);
     scene.dispose();
