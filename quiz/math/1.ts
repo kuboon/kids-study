@@ -1,0 +1,83 @@
+import { PRNG } from "../prng.ts";
+import type { HtmlString, Quiz, QuizGenerator } from "../types.ts";
+
+// addQuiz(2) は 2桁の足し算のクイズを生成する
+const addQuiz = (ln: number, minus: boolean) => (seed: number): Quiz => {
+  const prng = new PRNG(seed);
+  const max = 10 ** ln - 1;
+  const min = minus ? -max : 0;
+  const x = prng.uniformInt(min, max);
+  const y = prng.uniformInt(min, max);
+  const q = `${x} + ${y}`;
+  const a = x + y;
+  function wrong(): HtmlString {
+    const w = prng.uniformInt(min, max * 2);
+    if (w === a) {
+      return wrong();
+    }
+    return w.toString();
+  }
+  return {
+    q,
+    a: a.toString(),
+    wrong,
+  };
+};
+
+const subQuiz = (ln: number, minus: boolean) => (seed: number): Quiz => {
+  const prng = new PRNG(seed);
+  const max = 10 ** ln - 1;
+  const min = minus ? -max : 0;
+  const x = prng.uniformInt(min, max);
+  const yMin = minus ? -max : x;
+  const y = prng.uniformInt(yMin, x);
+  const q = `${x} - ${y}`;
+  const a = x - y;
+  function wrong(): HtmlString {
+    const w = prng.uniformInt(min, max * 2);
+    if (w === a) {
+      return wrong();
+    }
+    return w.toString();
+  }
+  return {
+    q,
+    a: a.toString(),
+    wrong,
+  };
+};
+
+export default [
+  {
+    title: "1桁の足し算",
+    fn: addQuiz(1, false),
+  },
+  {
+    title: "2桁の足し算",
+    fn: addQuiz(2, false),
+  },
+  {
+    title: "3桁の足し算",
+    fn: addQuiz(3, false),
+  },
+  {
+    title: "3桁の足し算 (マイナスあり)",
+    fn: addQuiz(3, true),
+  },
+  {
+    title: "1桁の引き算",
+    fn: subQuiz(1, false),
+  },
+  {
+    title: "2桁の引き算",
+    fn: subQuiz(2, false),
+  },
+  {
+    title: "3桁の引き算",
+    fn: subQuiz(3, false),
+  },
+  {
+    title: "3桁の引き算 (マイナスあり)",
+    fn: subQuiz(3, true),
+  },
+] satisfies QuizGenerator[];

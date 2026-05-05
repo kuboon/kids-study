@@ -1,0 +1,13 @@
+{
+  "tasks": {
+    "build": "deno run -A ./mod.ts"
+  },
+  "compilerOptions": {
+    "lib": ["deno.window", "deno.unstable"]
+  },
+  "imports": {
+    "@kuboon/tailwindcss-deno": "jsr:@kuboon/tailwindcss-deno@^0.1.3",
+    "@tailwindcss/oxide": "npm:@tailwindcss/oxide@^4.1.18",
+    "@remix-run/ui": "npm:@remix-run/ui@^0.1.1"
+  }
+}

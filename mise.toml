@@ -1,5 +1,11 @@
 [tools]
-node = "latest"
+deno = "latest"
 
 [tasks.build]
-run = "npm i && npm run build"
+run = "mkdir -p dist && deno task build"
+
+[tasks.dev]
+run = "deno task dev"
+
+[tasks.install-apm]
+run = "curl -sSL https://aka.ms/apm-unix"
