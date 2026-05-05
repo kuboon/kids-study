@@ -21,7 +21,7 @@ export function Document(_handle: Handle) {
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Kids Study</title>
         <link rel="icon" href="data:image/png;base64,iVBORw0KGgo=" />
-        <link rel="stylesheet" href="/style.css" />
+        <link rel="stylesheet" href="./style.css" />
         <script async type="module" src="../src/client/entry.ts"></script>
       </head>
       <body class="min-h-screen bg-base-100 text-base-content">

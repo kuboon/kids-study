@@ -27,7 +27,7 @@ export interface MenuProps {
 }
 
 export const Menu = clientEntry(
-  "/menu.js#Menu",
+  "./menu.js#Menu",
   function Menu(handle: Handle<MenuProps>) {
     let game: GameKind = "simple";
     let activeQuiz: number | null = null;
