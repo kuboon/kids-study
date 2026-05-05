@@ -29,7 +29,7 @@ export interface MenuProps {
 export const Menu = clientEntry(
   "./menu.js#Menu",
   function Menu(handle: Handle<MenuProps>) {
-    let game: GameKind = "simple";
+    let game: GameKind = "gate-runner";
     let activeQuiz: number | null = null;
 
     const back = () => {

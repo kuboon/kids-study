@@ -8,8 +8,9 @@
 import { buildSsg } from "./ssg.ts";
 import { buildCss } from "./css.ts";
 import { buildJs } from "./js.ts";
+import { copyAssets } from "./assets.ts";
 
-export { buildCss, buildJs };
+export { buildCss, buildJs, copyAssets };
 
 if (import.meta.main) {
   await buildSsg();
@@ -17,5 +18,6 @@ if (import.meta.main) {
   await Promise.all([
     buildJs().then((js) => console.log("[bundler] js complete:", js)),
     buildCss().then((css) => console.log("[bundler] css complete:", css)),
+    copyAssets().then(() => console.log("[bundler] assets copied")),
   ]);
 }

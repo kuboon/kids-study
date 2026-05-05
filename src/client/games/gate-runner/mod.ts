@@ -12,16 +12,20 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color.js";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder.js";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh.js";
-import type { InstancedMesh } from "@babylonjs/core/Meshes/instancedMesh.js";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode.js";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial.js";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture.js";
+import { SpriteManager } from "@babylonjs/core/Sprites/spriteManager.js";
+import { Sprite } from "@babylonjs/core/Sprites/sprite.js";
 
 import type { GameModule, GameMount } from "../types.ts";
 import type { Quiz } from "../../../../quiz/types.ts";
 
 const STREAK_TO_CLEAR = 10;
-const INITIAL_CROWD = 30;
+const INITIAL_CROWD = 8;
+const CROWD_PER_CORRECT = 2;
+// Wrong answer halves the crowd (rounded down). Halving stays dramatic
+// even at small counts: 8→4→2→1.
 // Approach: goal arch spawns far ahead → glides toward player → tape breaks → cleared.
 const FINALE_APPROACH_SPEED = 5;
 const FINALE_BREAK_DURATION = 1.4;
@@ -42,7 +46,8 @@ const BOOST_SWIPE_DURATION = 0.7; // seconds a single swipe-up lasts
 const SWIPE_UP_PIXELS = 40; // distance threshold to register a swipe-up
 const ROAD_WIDTH = 5;
 const ROAD_LENGTH = 200;
-const CROWD_VISIBLE_MAX = 80;
+// Visible cap is comfortable headroom over 8 + STREAK_TO_CLEAR * 2 = 28.
+const CROWD_VISIBLE_MAX = 32;
 
 type Lane = -1 | 1;
 
@@ -142,26 +147,31 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
   roadMat.specularColor = new Color3(0, 0, 0);
   road.material = roadMat;
 
-  // Crowd — instanced capsules. We cap the visible count for perf but the
-  // real number lives in `state.crowd`.
-  const crowdProto = MeshBuilder.CreateCapsule(
-    "crowd",
-    { radius: 0.18, height: 0.6, tessellation: 8, subdivisions: 1 },
+  // Crowd — Piyomi sprites (4-frame back-view walk cycle, 256×256 per frame).
+  // SpriteManager handles GPU instancing of all chicks from one atlas.
+  const piyomiManager = new SpriteManager(
+    "piyomi",
+    "./characters/piyomi.png",
+    CROWD_VISIBLE_MAX,
+    { width: 256, height: 256 },
     scene,
   );
-  crowdProto.isVisible = false;
-  const CROWD_BASE_COLOR = new Color3(0.12, 0.45, 0.95);
-  const crowdMat = new StandardMaterial("crowdMat", scene);
-  crowdMat.diffuseColor = CROWD_BASE_COLOR;
-  crowdMat.specularColor = new Color3(0.2, 0.2, 0.2);
-  crowdProto.material = crowdMat;
+  piyomiManager.isPickable = false;
+  const PIYOMI_SIZE = 1.4; // world units (sprite is square; tune to taste)
+  const PIYOMI_Y = 0.55; // sprite center; chick feet land near y≈0
+  const WALK_FPS = 7;
 
-  const crowdInstances: InstancedMesh[] = [];
+  const crowdSprites: Sprite[] = [];
+  // Stagger walk-cycle phase per sprite so the herd doesn't march in lockstep.
+  const walkPhase: number[] = [];
   for (let i = 0; i < CROWD_VISIBLE_MAX; i++) {
-    const inst = crowdProto.createInstance(`c${i}`);
-    inst.isVisible = false;
-    crowdInstances.push(inst);
+    const s = new Sprite(`p${i}`, piyomiManager);
+    s.size = PIYOMI_SIZE;
+    s.isVisible = false;
+    crowdSprites.push(s);
+    walkPhase.push(Math.random() * 4);
   }
+  let walkClock = 0;
 
   // Goal arch + breakable tape — used only in the finale.
   const goalRoot = new TransformNode("goalRoot", scene);
@@ -251,6 +261,21 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
   tapeR.material = tapeMat;
   tapeR.position.set(1.3, GOAL_TAPE_Y, 0);
   tapeR.parent = goalRoot;
+
+  // Chicken (鳥コス) standing past the arch, welcoming the chicks. Sprite
+  // is billboarded so we just match goalRoot's z each frame.
+  const chickenManager = new SpriteManager(
+    "chicken",
+    "./characters/chicken_welcome.png",
+    1,
+    { width: 256, height: 256 },
+    scene,
+  );
+  chickenManager.isPickable = false;
+  const chickenSprite = new Sprite("chicken", chickenManager);
+  chickenSprite.size = 2.0;
+  chickenSprite.isVisible = false;
+  let welcomeClock = 0;
 
   // Gate prototype reused per round (recreated each round to swap text).
   const makeGate = (
@@ -378,20 +403,25 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
       bounce = Math.sin(state.fx.t * 18) * 0.35 * Math.max(0, k);
     }
 
+    // Advance shared walk clock (frames per second).
+    walkClock += dt * WALK_FPS;
+
     for (let i = 0; i < CROWD_VISIBLE_MAX; i++) {
-      const inst = crowdInstances[i];
+      const s = crowdSprites[i];
       if (i >= visible) {
-        inst.isVisible = false;
+        s.isVisible = false;
         continue;
       }
-      inst.isVisible = true;
+      s.isVisible = true;
       const ang = (i / Math.max(1, visible)) * Math.PI * 2;
       const r = 0.4 + Math.sqrt(i / visible) * 0.9;
-      inst.position.set(
+      s.position.set(
         state.crowdX + Math.cos(ang) * r + scatter[i].x,
-        0.3 + bounce + Math.abs(scatter[i].y),
+        PIYOMI_Y + bounce + Math.abs(scatter[i].y),
         Math.sin(ang) * r * 0.6 + scatter[i].z,
       );
+      // Per-sprite phase keeps the herd from animating in sync.
+      s.cellIndex = Math.floor(walkClock + walkPhase[i]) % 4;
     }
   };
 
@@ -541,6 +571,8 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     tapeMat.alpha = 1;
     goalRoot.position.z = state.goal.z;
     goalRoot.setEnabled(true);
+    chickenSprite.isVisible = true;
+    welcomeClock = 0;
   };
 
   const resolveGate = () => {
@@ -550,8 +582,8 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     if (picked.correct) {
       state.score++;
       state.streak++;
-      state.crowd = Math.min(999, state.crowd + 5);
-      triggerFx("correct", "+5");
+      state.crowd = Math.min(999, state.crowd + CROWD_PER_CORRECT);
+      triggerFx("correct", `+${CROWD_PER_CORRECT}`);
     } else {
       state.streak = 0;
       state.speed = Math.max(
@@ -594,11 +626,12 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     for (let i = 0; i < CROWD_VISIBLE_MAX; i++) {
       scatter[i].x = scatter[i].y = scatter[i].z = 0;
     }
-    crowdMat.emissiveColor.set(0, 0, 0);
-    crowdMat.diffuseColor.copyFrom(CROWD_BASE_COLOR);
     camera.position.copyFrom(camHome);
     goalRoot.setEnabled(false);
     tapeMat.alpha = 1;
+    chickenSprite.isVisible = false;
+    walkClock = 0;
+    welcomeClock = 0;
     $end.classList.add("hidden");
     $end.classList.remove("flex");
     spawnGate();
@@ -707,26 +740,11 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
       }
     }
 
-    // Advance fx clock
+    // Advance fx clock — sprites are not tinted, FX comes from bounce/scatter
+    // (correct), camera shake (wrong), and floating delta numbers (both).
     if (state.fx.kind !== "none") {
       state.fx.t += dt;
       const k = Math.max(0, 1 - state.fx.t / state.fx.duration);
-      if (state.fx.kind === "correct") {
-        crowdMat.emissiveColor.set(0.0, 0.55 * k, 0.15 * k);
-        crowdMat.diffuseColor.set(
-          CROWD_BASE_COLOR.r * (1 - k * 0.6) + 0.35 * k,
-          CROWD_BASE_COLOR.g * (1 - k * 0.4) + 0.7 * k,
-          CROWD_BASE_COLOR.b * (1 - k * 0.6),
-        );
-      } else {
-        crowdMat.emissiveColor.set(0.6 * k, 0.0, 0.0);
-        crowdMat.diffuseColor.set(
-          CROWD_BASE_COLOR.r * (1 - k * 0.4) + 0.6 * k,
-          CROWD_BASE_COLOR.g * (1 - k * 0.6),
-          CROWD_BASE_COLOR.b * (1 - k * 0.6),
-        );
-      }
-      // Camera shake on wrong
       if (state.fx.kind === "wrong") {
         const intensity = k * 0.18;
         camera.position.x = camHome.x + (Math.random() - 0.5) * intensity * 2;
@@ -735,10 +753,20 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
       if (state.fx.t >= state.fx.duration) {
         state.fx.kind = "none";
         state.fx.t = 0;
-        crowdMat.emissiveColor.set(0, 0, 0);
-        crowdMat.diffuseColor.copyFrom(CROWD_BASE_COLOR);
         camera.position.copyFrom(camHome);
       }
+    }
+
+    // Chicken welcome bounce — visible for the whole finale, slower cycle.
+    if (chickenSprite.isVisible) {
+      welcomeClock += dt * 5;
+      chickenSprite.cellIndex = Math.floor(welcomeClock) % 4;
+      // Track the goal arch as it slides in, sit just past the tape.
+      chickenSprite.position.set(
+        0,
+        chickenSprite.size / 2,
+        goalRoot.position.z + 0.6,
+      );
     }
 
     // During finale lock the player crowd to center under the goal arch.
