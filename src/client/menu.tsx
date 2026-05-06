@@ -13,11 +13,13 @@ import {
 import quizzes from "../../quiz/mod.ts";
 import type { GameModule } from "./games/types.ts";
 
-type GameKind = "simple" | "gate-runner";
+type GameKind = "simple" | "gate-runner" | "minecart";
 
 const loadGame = async (kind: GameKind): Promise<GameModule> => {
   const mod = kind === "simple"
     ? await import("./games/simple/mod.ts")
+    : kind === "minecart"
+    ? await import("./games/minecart/mod.ts")
     : await import("./games/gate-runner/mod.ts");
   return mod.default;
 };
@@ -96,6 +98,9 @@ export const Menu = clientEntry(
                   selected={game === "gate-runner"}
                 >
                   ゲートランナー
+                </option>
+                <option value="minecart" selected={game === "minecart"}>
+                  トロッコでダイヤ
                 </option>
               </select>
             </fieldset>
