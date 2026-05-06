@@ -81,7 +81,6 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     </div>
     <div class="absolute top-3 right-3 flex gap-2 pointer-events-auto">
       <button data-restart class="btn btn-circle btn-sm" aria-label="やり直し">↻</button>
-      <a href="/" class="btn btn-circle btn-sm" aria-label="ホーム">🏠</a>
     </div>
     <div class="absolute bottom-6 left-1/2 -translate-x-1/2 px-5 py-1 rounded-full bg-primary text-primary-content text-2xl font-bold shadow-md">
       <span data-crowd>0</span>
@@ -380,9 +379,101 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     () => ({ x: 0, y: 0, z: 0 }),
   );
 
+  // ---- SFX -----------------------------------------------------------------
+  // Lazily create AudioContext inside a user gesture so browsers don't block.
+  let audioCtx: AudioContext | null = null;
+  const ensureAudio = (): AudioContext | null => {
+    if (audioCtx) return audioCtx;
+    const Ctx = (globalThis as unknown as {
+      AudioContext?: typeof AudioContext;
+      webkitAudioContext?: typeof AudioContext;
+    }).AudioContext ??
+      (globalThis as unknown as { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
+    if (!Ctx) return null;
+    try {
+      audioCtx = new Ctx();
+      return audioCtx;
+    } catch {
+      return null;
+    }
+  };
+
+  type SfxNote = { f: number; t: number; d: number; type?: OscillatorType };
+  const playNotes = (notes: SfxNote[], volume = 0.18) => {
+    const ctx = ensureAudio();
+    if (!ctx) return;
+    if (ctx.state === "suspended") ctx.resume().catch(() => {});
+    const base = ctx.currentTime;
+    for (const n of notes) {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = n.type ?? "sine";
+      osc.frequency.setValueAtTime(n.f, base + n.t);
+      g.gain.setValueAtTime(0, base + n.t);
+      g.gain.linearRampToValueAtTime(volume, base + n.t + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, base + n.t + n.d);
+      osc.connect(g).connect(ctx.destination);
+      osc.start(base + n.t);
+      osc.stop(base + n.t + n.d + 0.02);
+    }
+  };
+  const playSweep = (
+    fStart: number,
+    fEnd: number,
+    duration: number,
+    type: OscillatorType = "sawtooth",
+    volume = 0.16,
+  ) => {
+    const ctx = ensureAudio();
+    if (!ctx) return;
+    if (ctx.state === "suspended") ctx.resume().catch(() => {});
+    const t0 = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(fStart, t0);
+    osc.frequency.exponentialRampToValueAtTime(
+      Math.max(20, fEnd),
+      t0 + duration,
+    );
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(volume, t0 + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+    osc.connect(g).connect(ctx.destination);
+    osc.start(t0);
+    osc.stop(t0 + duration + 0.02);
+  };
+
+  const sfx = {
+    lane: () => playNotes([{ f: 880, t: 0, d: 0.06, type: "triangle" }], 0.10),
+    correct: () =>
+      playNotes([
+        { f: 523.25, t: 0.00, d: 0.16, type: "triangle" }, // C5
+        { f: 659.25, t: 0.08, d: 0.16, type: "triangle" }, // E5
+        { f: 783.99, t: 0.16, d: 0.22, type: "triangle" }, // G5
+      ], 0.18),
+    wrong: () => playSweep(330, 90, 0.45, "sawtooth", 0.18),
+    boost: () => playSweep(280, 880, 0.22, "square", 0.10),
+    goal: () =>
+      playNotes([
+        { f: 523.25, t: 0.00, d: 0.18, type: "triangle" }, // C5
+        { f: 659.25, t: 0.10, d: 0.18, type: "triangle" }, // E5
+        { f: 783.99, t: 0.20, d: 0.18, type: "triangle" }, // G5
+        { f: 1046.5, t: 0.30, d: 0.45, type: "triangle" }, // C6
+      ], 0.20),
+    gameover: () =>
+      playNotes([
+        { f: 392.00, t: 0.00, d: 0.30, type: "sine" }, // G4
+        { f: 329.63, t: 0.20, d: 0.30, type: "sine" }, // E4
+        { f: 246.94, t: 0.40, d: 0.55, type: "sine" }, // B3
+      ], 0.18),
+  };
+
   const camHome = camera.position.clone();
 
   const setLane = (lane: Lane) => {
+    if (state.lane !== lane) sfx.lane();
     state.lane = lane;
     state.targetX = lane * LANE_X;
   };
@@ -610,6 +701,7 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
       state.streak++;
       state.crowd = Math.min(999, state.crowd + CROWD_PER_CORRECT);
       triggerFx("correct", `+${CROWD_PER_CORRECT}`);
+      sfx.correct();
     } else {
       state.streak = 0;
       state.speed = Math.max(
@@ -619,10 +711,12 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
       const before = state.crowd;
       state.crowd = Math.floor(state.crowd / 2);
       triggerFx("wrong", `-${before - state.crowd}`);
+      sfx.wrong();
     }
     renderHud();
 
     if (state.crowd <= 0) {
+      sfx.gameover();
       endGame(false);
       return;
     }
@@ -672,7 +766,10 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.key === "ArrowLeft" || e.key === "a") setLane(-1);
     else if (e.key === "ArrowRight" || e.key === "d") setLane(1);
-    else if (e.key === "ArrowUp" || e.key === "w") state.keyBoosting = true;
+    else if (e.key === "ArrowUp" || e.key === "w") {
+      if (!state.keyBoosting) sfx.boost();
+      state.keyBoosting = true;
+    }
   };
   const onKeyUp = (e: KeyboardEvent) => {
     if (e.key === "ArrowUp" || e.key === "w") state.keyBoosting = false;
@@ -694,6 +791,7 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     if (e.clientY - pointerStart.y < -SWIPE_UP_PIXELS) {
       state.swipeBoostT = BOOST_SWIPE_DURATION;
       boostedThisGesture = true;
+      sfx.boost();
     }
   };
   const onPointerEnd = () => {
@@ -745,6 +843,7 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
           state.goal.breakT = 0;
           $q.innerHTML = "ゴール！";
           spawnConfetti();
+          sfx.goal();
           // Celebrate with the same green pulse used for correct answers.
           state.fx.kind = "correct";
           state.fx.t = 0;
@@ -830,6 +929,10 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     engine.dispose();
     overlay.remove();
     canvas.remove();
+    if (audioCtx) {
+      audioCtx.close().catch(() => {});
+      audioCtx = null;
+    }
     if (!prevPosition) container.style.position = "";
   };
 };
