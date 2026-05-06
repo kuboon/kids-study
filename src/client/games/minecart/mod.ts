@@ -23,6 +23,7 @@ import { Sprite } from "@babylonjs/core/Sprites/sprite.js";
 
 import type { GameModule, GameMount } from "../types.ts";
 import type { Quiz } from "../../../../quiz/types.ts";
+import { createSession, type QuizSession } from "../../../../quiz/session.ts";
 
 const STREAK_TO_CLEAR = 10;
 const INITIAL_DIAMONDS = 8;
@@ -724,7 +725,6 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     swipeBoostT: number;
     pair: StonePair | null;
     currentQuiz: Quiz | null;
-    seed: number;
     ended: boolean;
     miningT: number; // -1 = not mining; >=0 = elapsed in swing
     miningHitsLeft: number; // hits remaining for current swing
@@ -743,7 +743,6 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     swipeBoostT: 0,
     pair: null,
     currentQuiz: null,
-    seed: 1,
     ended: false,
     miningT: -1,
     miningHitsLeft: 0,
@@ -917,9 +916,14 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     disposeStoneSide(p.right);
   };
 
+  let session: QuizSession = createSession(
+    quiz,
+    (Math.random() * 0x7fffffff) | 0,
+  );
+
   const spawnPair = () => {
     disposePair(state.pair);
-    const q = quiz.fn(state.seed++);
+    const q = session.next();
     state.currentQuiz = q;
     const correctText = stripHtml(q.a);
     let wrongText = stripHtml(q.wrong());
@@ -1092,6 +1096,7 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
       state.diamonds = Math.floor(state.diamonds / 2);
       triggerFx("wrong", `-${before - state.diamonds}`);
       sfx.wrong();
+      session.markWrong();
     }
     renderHud();
 
@@ -1116,7 +1121,7 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     state.score = 0;
     state.streak = 0;
     state.diamonds = INITIAL_DIAMONDS;
-    state.seed = (Math.random() * 0x7fffffff) | 0;
+    session = createSession(quiz, (Math.random() * 0x7fffffff) | 0);
     state.lane = -1;
     state.targetX = -LANE_X;
     state.speed = SCROLL_SPEED_INITIAL;

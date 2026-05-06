@@ -4,6 +4,7 @@
  * green/red feedback, advances after a beat.
  */
 
+import { createSession, type QuizSession } from "../../../../quiz/session.ts";
 import type { GameModule, GameMount } from "../types.ts";
 
 const STAGES = 5;
@@ -23,7 +24,10 @@ const shuffle = <T>(arr: T[]): T[] => {
 export const mount: GameMount = (container, { quiz, onComplete }) => {
   let stage = 0;
   let score = 0;
-  const seedBase = (Math.random() * 0x7fffffff) | 0;
+  let session: QuizSession = createSession(
+    quiz,
+    (Math.random() * 0x7fffffff) | 0,
+  );
   let timer: ReturnType<typeof setTimeout> | null = null;
 
   container.style.position = container.style.position || "relative";
@@ -47,6 +51,7 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     again.addEventListener("click", () => {
       stage = 0;
       score = 0;
+      session = createSession(quiz, (Math.random() * 0x7fffffff) | 0);
       renderRound();
     });
     wrap.appendChild(again);
@@ -60,7 +65,7 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
       return;
     }
 
-    const q = quiz.fn(seedBase + stage);
+    const q = session.next();
     const correct = stripHtml(q.a);
     const opts: string[] = [correct];
     let safety = 16;
@@ -98,6 +103,7 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
             b.classList.add("btn-success");
           }
         });
+        session.markWrong();
       } else {
         score++;
       }

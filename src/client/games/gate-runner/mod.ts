@@ -20,6 +20,7 @@ import { Sprite } from "@babylonjs/core/Sprites/sprite.js";
 
 import type { GameModule, GameMount } from "../types.ts";
 import type { Quiz } from "../../../../quiz/types.ts";
+import { createSession, type QuizSession } from "../../../../quiz/session.ts";
 
 const STREAK_TO_CLEAR = 10;
 const INITIAL_CROWD = 8;
@@ -347,7 +348,6 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     swipeBoostT: number;
     gate: Gate | null;
     currentQuiz: Quiz | null;
-    seed: number;
     ended: boolean;
     phase: Phase;
     goal: Goal | null;
@@ -366,7 +366,6 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     swipeBoostT: 0,
     gate: null,
     currentQuiz: null,
-    seed: 1,
     ended: false,
     phase: "playing",
     goal: null,
@@ -538,9 +537,14 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     disposeGateSide(g.right);
   };
 
+  let session: QuizSession = createSession(
+    quiz,
+    (Math.random() * 0x7fffffff) | 0,
+  );
+
   const spawnGate = () => {
     disposeGate(state.gate);
-    const q = quiz.fn(state.seed++);
+    const q = session.next();
     state.currentQuiz = q;
     const correctText = stripHtml(q.a);
     let wrongText = stripHtml(q.wrong());
@@ -712,6 +716,7 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
       state.crowd = Math.floor(state.crowd / 2);
       triggerFx("wrong", `-${before - state.crowd}`);
       sfx.wrong();
+      session.markWrong();
     }
     renderHud();
 
@@ -731,7 +736,7 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     state.score = 0;
     state.streak = 0;
     state.crowd = INITIAL_CROWD;
-    state.seed = (Math.random() * 0x7fffffff) | 0;
+    session = createSession(quiz, (Math.random() * 0x7fffffff) | 0);
     state.lane = -1;
     state.targetX = -LANE_X;
     state.crowdX = -LANE_X;
