@@ -15,7 +15,7 @@
   },
   "permissions": {
     "default": {
-      "env": ["IDP_ORIGIN"],
+      "env": ["IDP_ORIGIN", "BASE_URL"],
       "read": ["../bundled"]
     }
   }
