@@ -28,15 +28,14 @@ const addQuiz = (ln: number, minus: boolean) => (seed: number): Quiz => {
 const subQuiz = (ln: number, minus: boolean) => (seed: number): Quiz => {
   const prng = new PRNG(seed);
   const max = 10 ** ln - 1;
-  const min = minus ? -max : 0;
+  const min = minus ? -max : 1;
   const x = prng.uniformInt(min, max);
-  const yMin = minus ? -max : x;
-  const y = prng.uniformInt(yMin, x);
+  const y = prng.uniformInt(min, minus ? max : x);
   const yStr = minus && y < 0 ? `(${y})` : y.toString();
   const q = `${x} - ${yStr}`;
   const a = x - y;
   function wrong(): HtmlString {
-    const w = prng.uniformInt(min, max * 2);
+    const w = prng.uniformInt(min, max);
     if (w === a) {
       return wrong();
     }
