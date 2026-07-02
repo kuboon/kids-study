@@ -13,13 +13,15 @@ import {
 import quizzes from "../../quiz/mod.ts";
 import type { GameModule } from "./games/types.ts";
 
-type GameKind = "simple" | "gate-runner" | "minecart";
+type GameKind = "simple" | "gate-runner" | "minecart" | "boss-battle";
 
 const loadGame = async (kind: GameKind): Promise<GameModule> => {
   const mod = kind === "simple"
     ? await import("./games/simple/mod.ts")
     : kind === "minecart"
     ? await import("./games/minecart/mod.ts")
+    : kind === "boss-battle"
+    ? await import("./games/boss-battle/mod.ts")
     : await import("./games/gate-runner/mod.ts");
   return mod.default;
 };
@@ -101,6 +103,12 @@ export const Menu = clientEntry(
                 </option>
                 <option value="minecart" selected={game === "minecart"}>
                   トロッコでダイヤ
+                </option>
+                <option
+                  value="boss-battle"
+                  selected={game === "boss-battle"}
+                >
+                  ボスバトル
                 </option>
               </select>
             </fieldset>
