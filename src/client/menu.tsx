@@ -13,7 +13,12 @@ import {
 import quizzes from "../../quiz/mod.ts";
 import type { GameModule } from "./games/types.ts";
 
-type GameKind = "simple" | "gate-runner" | "minecart" | "boss-battle";
+type GameKind =
+  | "simple"
+  | "gate-runner"
+  | "minecart"
+  | "boss-battle"
+  | "target-shooter";
 
 const loadGame = async (kind: GameKind): Promise<GameModule> => {
   const mod = kind === "simple"
@@ -22,6 +27,8 @@ const loadGame = async (kind: GameKind): Promise<GameModule> => {
     ? await import("./games/minecart/mod.ts")
     : kind === "boss-battle"
     ? await import("./games/boss-battle/mod.ts")
+    : kind === "target-shooter"
+    ? await import("./games/target-shooter/mod.ts")
     : await import("./games/gate-runner/mod.ts");
   return mod.default;
 };
@@ -109,6 +116,12 @@ export const Menu = clientEntry(
                   selected={game === "boss-battle"}
                 >
                   ボスバトル
+                </option>
+                <option
+                  value="target-shooter"
+                  selected={game === "target-shooter"}
+                >
+                  まとあて
                 </option>
               </select>
             </fieldset>
