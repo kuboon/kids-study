@@ -1,10 +1,11 @@
 /**
  * Target Shooter — pull-and-release aiming game. Four answer targets
- * drift and bounce around the field; the player pulls back a slingshot
- * near the bird and releases to fire a shot in the opposite direction.
- * Only a shot that actually lands on a target resolves the answer —
- * tapping a target directly does nothing, so picking the answer takes
- * real aim. Subject-agnostic: consumes any QuizGenerator.
+ * drift and bounce around the field; the player pulls the bird back like
+ * a slingshot and releases it to fly toward a target, then it flies back
+ * once it lands a hit or leaves the field. Only landing on a target
+ * resolves the answer — tapping a target directly does nothing, so
+ * picking the answer takes real aim. Subject-agnostic: consumes any
+ * QuizGenerator.
  */
 
 import { createSession, type QuizSession } from "../../../../quiz/session.ts";
@@ -20,13 +21,15 @@ const TARGET_SPEED_PER_ROUND = 6;
 const TARGET_SPEED_MAX = 150;
 const TARGET_JITTER_CHANCE = 0.02; // per frame, nudges heading a bit
 
-const PROJECTILE_RADIUS = 7;
-const SHOT_SPEED_MIN = 650; // px/s, weak pull
-const SHOT_SPEED_MAX = 1150; // px/s, full pull
-const RELOAD_MS = 280;
+const CHICK_HIT_RADIUS = 24;
+const CHICK_SPEED_MIN = 650; // px/s, weak pull
+const CHICK_SPEED_MAX = 1150; // px/s, full pull
+const CHICK_SPIN_DEG_PER_SEC = 640; // tumble while flying out
+const CHICK_RETURN_MS = 320; // CSS transition back to the anchor
+const CHICK_OUT_OF_BOUNDS_PAD = 50;
 
 const MIN_PULL = 16; // px, below this a release cancels the shot
-const MAX_PULL = 110; // px, clamps the elastic and caps shot speed
+const MAX_PULL = 110; // px, clamps the elastic and caps flight speed
 
 const TOP_MARGIN = 78; // keep targets clear of the HUD
 const BOTTOM_MARGIN = 16;
@@ -122,6 +125,7 @@ const CSS = `
 .ts-streak-bounce{animation:ts-streak-bounce .3s}
 @keyframes ts-shake{10%,90%{transform:translateX(-4px)}30%,70%{transform:translateX(4px)}50%{transform:translateX(-3px)}}
 .ts-shake{animation:ts-shake .3s}
+.ts-return{transition:transform ${CHICK_RETURN_MS}ms ease-out}
 `;
 
 const SKELETON = `
@@ -136,7 +140,6 @@ const SKELETON = `
       </div>
     </div>
     <div data-ts="targets" class="absolute inset-0"></div>
-    <div data-ts="shots" class="absolute inset-0 pointer-events-none"></div>
     <div
       data-ts="band"
       class="absolute bg-warning/70 rounded-full hidden pointer-events-none"
@@ -165,13 +168,7 @@ type Target = {
   correct: boolean;
 };
 
-type Shot = {
-  node: HTMLDivElement;
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-};
+type Flight = "idle" | "out" | "back";
 
 export const mount: GameMount = (container, { quiz, onComplete }) => {
   const prevPosition = container.style.position;
@@ -209,12 +206,16 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
   let lastT = 0;
 
   let fieldEl!: HTMLDivElement;
+  let shooterEl!: HTMLSpanElement;
   let targets: Target[] = [];
-  let shots: Shot[] = [];
   let anchor: Vec = { x: 0, y: 0 };
   let dragging = false;
   let pull: Vec = { x: 0, y: 0 };
-  let reloadUntil = 0;
+
+  let flight: Flight = "idle";
+  let chick: Vec = { x: 0, y: 0 };
+  let chickVel: Vec = { x: 0, y: 0 };
+  let chickSpin = 0;
 
   // ---- geometry helpers ----
 
@@ -257,30 +258,32 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     }px, ${pull.y * 0.5}px)`;
   };
 
+  const returnChick = () => {
+    flight = "back";
+    chickSpin = 0;
+    shooterEl.classList.add("ts-return");
+    shooterEl.style.transform = "translate(0,0)";
+    schedule(() => {
+      shooterEl.classList.remove("ts-return");
+      flight = "idle";
+    }, CHICK_RETURN_MS);
+  };
+
   const fire = (pullLen: number) => {
-    reloadUntil = Date.now() + RELOAD_MS;
     sfx.shoot();
-    const speed = SHOT_SPEED_MIN +
-      (pullLen / MAX_PULL) * (SHOT_SPEED_MAX - SHOT_SPEED_MIN);
+    const speed = CHICK_SPEED_MIN +
+      (pullLen / MAX_PULL) * (CHICK_SPEED_MAX - CHICK_SPEED_MIN);
     const dirX = -pull.x / pullLen;
     const dirY = -pull.y / pullLen;
-    const node = document.createElement("div");
-    node.className = "absolute rounded-full bg-warning shadow";
-    node.style.width = `${PROJECTILE_RADIUS * 2}px`;
-    node.style.height = `${PROJECTILE_RADIUS * 2}px`;
-    node.style.willChange = "transform";
-    el("shots").appendChild(node);
-    shots.push({
-      node,
-      x: anchor.x,
-      y: anchor.y,
-      vx: dirX * speed,
-      vy: dirY * speed,
-    });
+    flight = "out";
+    chickSpin = 0;
+    chick = { x: anchor.x, y: anchor.y };
+    chickVel = { x: dirX * speed, y: dirY * speed };
+    shooterEl.classList.remove("ts-return");
   };
 
   const onPointerDown = (e: PointerEvent) => {
-    if (resolved) return;
+    if (resolved || flight !== "idle") return;
     dragging = true;
     fieldEl.setPointerCapture(e.pointerId);
     const p = toLocal(e);
@@ -301,7 +304,7 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     if (!dragging) return;
     dragging = false;
     const len = Math.hypot(pull.x, pull.y);
-    if (len >= MIN_PULL && Date.now() >= reloadUntil && !resolved) {
+    if (len >= MIN_PULL && flight === "idle" && !resolved) {
       fire(len);
     }
     pull = { x: 0, y: 0 };
@@ -310,6 +313,7 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
 
   const bindField = () => {
     fieldEl = el<HTMLDivElement>("field");
+    shooterEl = el<HTMLSpanElement>("shooter");
     fieldEl.addEventListener("pointerdown", onPointerDown);
     fieldEl.addEventListener("pointermove", onPointerMove);
     fieldEl.addEventListener("pointerup", onPointerUp);
@@ -320,9 +324,7 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
 
   const clearField = () => {
     for (const t of targets) t.wrap.remove();
-    for (const s of shots) s.node.remove();
     targets = [];
-    shots = [];
   };
 
   const spawnTargets = (correct: string, wrongs: string[]) => {
@@ -445,13 +447,9 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     schedule(() => wraps.forEach((w) => w.remove()), 600);
   };
 
-  const removeShot = (s: Shot) => {
-    s.node.remove();
-    shots = shots.filter((x) => x !== s);
-  };
-
   const onHit = (tg: Target) => {
     resolved = true;
+    returnChick();
     const cx = tg.x + TARGET_RADIUS;
     const cy = tg.y + TARGET_RADIUS;
     if (tg.correct) {
@@ -523,27 +521,37 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
       tg.wrap.style.transform = `translate(${tg.x}px, ${tg.y}px)`;
     }
 
-    for (const s of shots.slice()) {
-      s.x += s.vx * dt;
-      s.y += s.vy * dt;
-      s.node.style.transform = `translate(${s.x - PROJECTILE_RADIUS}px, ${
-        s.y - PROJECTILE_RADIUS
-      }px)`;
-      if (s.x < -20 || s.x > w + 20 || s.y < -20 || s.y > h + 20) {
-        removeShot(s);
-        continue;
-      }
+    if (flight === "out") {
+      chick.x += chickVel.x * dt;
+      chick.y += chickVel.y * dt;
+      chickSpin += CHICK_SPIN_DEG_PER_SEC * dt;
+      shooterEl.style.transform = `translate(${chick.x - anchor.x}px, ${
+        chick.y - anchor.y
+      }px) rotate(${chickSpin}deg)`;
+
+      let hit = false;
       if (!resolved) {
         for (const tg of targets) {
           const cx = tg.x + TARGET_RADIUS, cy = tg.y + TARGET_RADIUS;
           if (
-            Math.hypot(cx - s.x, cy - s.y) < TARGET_RADIUS + PROJECTILE_RADIUS
+            Math.hypot(cx - chick.x, cy - chick.y) <
+              TARGET_RADIUS + CHICK_HIT_RADIUS
           ) {
-            removeShot(s);
             onHit(tg);
+            hit = true;
             break;
           }
         }
+      }
+      if (
+        !hit && (
+          chick.x < -CHICK_OUT_OF_BOUNDS_PAD ||
+          chick.x > w + CHICK_OUT_OF_BOUNDS_PAD ||
+          chick.y < -CHICK_OUT_OF_BOUNDS_PAD ||
+          chick.y > h + CHICK_OUT_OF_BOUNDS_PAD
+        )
+      ) {
+        returnChick();
       }
     }
 
@@ -586,10 +594,11 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
   const startGame = () => {
     root.innerHTML = SKELETON;
     targets = [];
-    shots = [];
     resolved = false;
     dragging = false;
     pull = { x: 0, y: 0 };
+    flight = "idle";
+    chickSpin = 0;
     bindField();
     placeShooter();
     renderHud();
