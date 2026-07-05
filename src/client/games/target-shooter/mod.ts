@@ -29,8 +29,9 @@ const MIN_PULL = 16; // px, below this a release cancels the shot
 const MAX_PULL = 110; // px, clamps the elastic and caps shot speed
 
 const TOP_MARGIN = 78; // keep targets clear of the HUD
-const BOTTOM_MARGIN = 120; // keep targets clear of the shooter/aim zone
+const BOTTOM_MARGIN = 16;
 const SIDE_MARGIN = 12;
+const TARGET_MIN_SPACING = TARGET_SIZE * 1.15; // also used to clear the shooter itself
 
 const RESOLVE_DELAY_MS = 650;
 
@@ -226,7 +227,8 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
 
   const placeShooter = () => {
     const { w, h } = fieldSize();
-    anchor = { x: w / 2, y: h - 56 };
+    // Centered so a pull has equal room in every direction, not just up.
+    anchor = { x: w / 2, y: h / 2 };
     const s = el<HTMLSpanElement>("shooter");
     s.style.left = `${anchor.x - 30}px`;
     s.style.top = `${anchor.y - 30}px`;
@@ -333,7 +335,10 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
       TARGET_SPEED_MAX,
       TARGET_SPEED_BASE + round * TARGET_SPEED_PER_ROUND,
     );
-    const placed: Vec[] = [];
+    // Seed with the shooter's own spot so targets don't spawn right on it.
+    const placed: Vec[] = [
+      { x: anchor.x - TARGET_SIZE / 2, y: anchor.y - TARGET_SIZE / 2 },
+    ];
     const layer = el("targets");
     for (const { v, c } of values) {
       let x = 0, y = 0, tries = 20;
@@ -346,7 +351,7 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
         tries--;
       } while (
         tries > 0 &&
-        placed.some((p) => Math.hypot(p.x - x, p.y - y) < TARGET_SIZE * 1.15)
+        placed.some((p) => Math.hypot(p.x - x, p.y - y) < TARGET_MIN_SPACING)
       );
       placed.push({ x, y });
 
