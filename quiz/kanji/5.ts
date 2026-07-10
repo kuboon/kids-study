@@ -1,7 +1,7 @@
 import type { QuizGenerator } from "../types.ts";
 import { type KanjiEntry, makeKanjiQuiz } from "./common.ts";
 
-const KanjiList = [
+export const KanjiList = [
   // 移: うつ(る/す)
   { q: "移", qPost: "る", a: "うつ", wrongs: ["かえ", "もど", "わた"] },
   { q: "移", qPost: "す", a: "うつ", wrongs: ["なお", "もど", "はな"] },

@@ -4,13 +4,15 @@
     "./src",
     "./src/builder",
     "./src/client",
-    "./src/ssg"
+    "./src/ssg",
+    "./tools"
   ],
   "tasks": {
     "serve": "cd dist && deno run --allow-net --allow-read jsr:@std/http/file-server",
     "build": "deno task --cwd src/builder build",
     "test": "deno test -P",
-    "check": "deno check && deno lint && deno fmt --check"
+    "check": "deno check && deno lint && deno fmt --check",
+    "gen:strokes": "deno run -A tools/gen_kanji_strokes.ts"
   },
   "permissions": {
     "default": {}

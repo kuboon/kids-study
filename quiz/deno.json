@@ -1,5 +1,6 @@
 {
   "imports": {
+    "@std/assert": "jsr:@std/assert@^1.0.19",
     "pure-rand": "npm:pure-rand@^8.4.0"
   }
 }
