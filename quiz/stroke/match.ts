@@ -81,4 +81,31 @@ export const centroid = (pts: readonly P[]): P => {
   return { x: x / pts.length, y: y / pts.length };
 };
 
+/** Translate a point list so its centroid is at the origin. */
+export const center = (pts: readonly P[]): P[] => {
+  const c = centroid(pts);
+  return pts.map((p) => ({ x: p.x - c.x, y: p.y - c.y }));
+};
+
+/**
+ * Accuracy in [0,1] of a drawn stroke vs a target, judged by *shape* — angle,
+ * length and curve — NOT absolute position: both are centred on their centroid
+ * before comparing, so a correct shape drawn anywhere scores high, while a
+ * wrong angle or length scores low. `scale` is the mean centred-point distance
+ * (canvas units) at which accuracy reaches 0.
+ */
+export const shapeAccuracy = (
+  drawn: readonly P[],
+  target: readonly P[],
+  n = 16,
+  scale = 30,
+): number => {
+  if (drawn.length < 2 || target.length < 2) return 0;
+  const md = meanDistance(
+    center(resample(drawn, n)),
+    center(resample(target, n)),
+  );
+  return Math.max(0, Math.min(1, 1 - md / scale));
+};
+
 export const pointDistance = dist;

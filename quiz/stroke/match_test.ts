@@ -4,6 +4,7 @@ import {
   meanDistance,
   polylineLength,
   resample,
+  shapeAccuracy,
   strokeDistance,
 } from "./match.ts";
 
@@ -53,4 +54,30 @@ Deno.test("polylineLength and centroid", () => {
 
 Deno.test("meanDistance: empty is Infinity", () => {
   assertEquals(meanDistance([], []), Infinity);
+});
+
+Deno.test("shapeAccuracy: identical shape scores ~1", () => {
+  const a = line(10, 10, 90, 40);
+  assertAlmostEquals(shapeAccuracy(a, a), 1, 1e-6);
+});
+
+Deno.test("shapeAccuracy: same shape, different position still ~1", () => {
+  const a = line(10, 10, 70, 10);
+  const b = line(40, 60, 100, 60); // translated, same angle & length
+  assertAlmostEquals(shapeAccuracy(a, b), 1, 1e-6);
+});
+
+Deno.test("shapeAccuracy: wrong angle scores low", () => {
+  const a = line(0, 0, 80, 0); // horizontal
+  const b = line(0, 0, 0, 80); // vertical, same length
+  const acc = shapeAccuracy(a, b);
+  if (acc > 0.2) throw new Error(`perpendicular should score low, got ${acc}`);
+});
+
+Deno.test("shapeAccuracy: much shorter length scores lower than exact", () => {
+  const a = line(0, 0, 80, 0);
+  const short = line(0, 0, 30, 0); // same angle, ~⅜ the length
+  const accShort = shapeAccuracy(a, short);
+  const accExact = shapeAccuracy(a, a);
+  if (!(accShort < accExact)) throw new Error("length should matter");
 });
