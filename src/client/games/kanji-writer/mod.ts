@@ -127,6 +127,7 @@ const SKELETON = `
     <div class="flex flex-col items-center gap-0.5 pb-2">
       <div data-kw="progress" class="text-sm opacity-70"></div>
       <div class="text-xs opacity-40">おぼえて かこう！はやいほど たかとくてん</div>
+      <button data-kw="vr" type="button" class="btn btn-xs btn-outline mt-1 hidden">🥽 VRで 空中に かく</button>
     </div>
   </div>
 `;
@@ -174,6 +175,7 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
   let combo = 0;
   let resolved = false;
 
+  let xrHandle: { stop: () => void } | null = null;
   let stageEl!: HTMLDivElement;
   let svgEl: SVGSVGElement | null = null;
   let pathEls: SVGPathElement[] = [];
@@ -451,6 +453,39 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
     startGame();
   };
 
+  // ---- WebXR (air-writing) — lazily loads Babylon only on demand ----
+
+  const xrSupported = async (): Promise<boolean> => {
+    const xr = (navigator as { xr?: XRSystem }).xr;
+    if (!xr?.isSessionSupported) return false;
+    try {
+      return await xr.isSessionSupported("immersive-vr");
+    } catch {
+      return false;
+    }
+  };
+
+  const enterVR = async () => {
+    if (xrHandle) return;
+    const overlay = document.createElement("div");
+    overlay.className = "absolute inset-0 z-40 bg-black";
+    host.appendChild(overlay);
+    try {
+      const m = await import("./xr.ts");
+      if (disposed) {
+        overlay.remove();
+        return;
+      }
+      xrHandle = await m.startXR(overlay, quiz, () => {
+        xrHandle = null;
+        overlay.remove();
+      });
+    } catch (e) {
+      console.error("VR start failed", e);
+      overlay.remove();
+    }
+  };
+
   const startGame = () => {
     host.innerHTML = SKELETON;
     stageEl = el<HTMLDivElement>("stage");
@@ -461,6 +496,11 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
       dragStart = null;
       startIdle();
     });
+    const vrBtn = el<HTMLButtonElement>("vr");
+    vrBtn.addEventListener("click", enterVR);
+    xrSupported().then((ok) => {
+      if (ok && !disposed) vrBtn.classList.remove("hidden");
+    });
     renderHud();
     nextKanji();
   };
@@ -469,6 +509,7 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
 
   return () => {
     disposed = true;
+    xrHandle?.stop();
     for (const id of timers) clearTimeout(id);
     timers.clear();
     sfx.dispose();
