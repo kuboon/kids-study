@@ -4,7 +4,8 @@
 // See /NOTICE.
 //
 // Each value is the list of KanjiVG stroke paths (SVG path "d", 109x109
-// viewBox) in writing order, used to draw the kanji one stroke at a time.
+// viewBox) in writing order, used both to draw the kanji one stroke at a time
+// and to fuzzy-match the player's drawn strokes.
 
 export const KANJI_PATHS: Record<string, readonly string[]> = {
   "上": [

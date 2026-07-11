@@ -1,31 +1,39 @@
 /**
- * Kanji Writer — write a kanji by swiping each stroke's direction in order,
- * fighting-game-command style. The kanji is drawn from KanjiVG paths one
- * stroke at a time as you get each stroke right; a bent stroke (e.g. ┓) is
- * one continuous L-shaped drag (→ then ↓ without lifting the finger), its
- * corner recognized by `gestureDirs`. The prompt is the reading, so you
- * recall which kanji to write. Three modes dial the help from "show me" to
- * "test me".
+ * Kanji Writer — write a kanji stroke by stroke. Each stroke you draw is
+ * fuzzy-matched against the real KanjiVG stroke shape (not a reduced
+ * direction), so curves, bends (┓) and hooks are handled naturally and the
+ * judgement is forgiving. The kanji is drawn in as you get each stroke right;
+ * the prompt is the reading, so you recall which kanji to write. Three modes
+ * dial the help from "show me the shape" to "test me". Each kanji has a time
+ * limit of (stroke count + 3) seconds.
  *
- * Stroke data derived from KanjiVG (CC BY-SA 3.0); see /NOTICE.
+ * Kanji-specific (no longer a generic stroke engine). Stroke data from
+ * KanjiVG (CC BY-SA 3.0); see /NOTICE.
  */
 
 import { createSession, type Session } from "../../../../quiz/session.ts";
 import {
-  DIR_ARROWS,
-  gestureDirs,
-  type Pt,
-  quantize8,
-} from "../../../../quiz/stroke/dir.ts";
+  centroid,
+  meanDistance,
+  type P,
+  pointDistance,
+  resample,
+} from "../../../../quiz/stroke/match.ts";
 import type { StrokeQuiz } from "../../../../quiz/stroke/types.ts";
 import type { StrokeGameModule, StrokeGameMount } from "../stroke_types.ts";
 
 const ROUNDS_TO_CLEAR = 5;
-// Per-kanji time limit = stroke count + this many seconds. Run out → おしまい.
-const TIME_BONUS_SEC = 3;
+const TIME_BONUS_SEC = 3; // per-kanji time = stroke count + this
 const TIME_DANGER_SEC = 3; // the bar blinks red for the final stretch
-const MIN_SWIPE = 24; // px; shorter drags are taps and ignored
-const HINT_IDLE_MS = 1000; // ヒント: reveal the next arrow after this idle time
+const MIN_SWIPE = 20; // px; shorter drags are taps and ignored (non-dot)
+
+const HINT_IDLE_MS = 1000; // ヒント: reveal the next stroke after this idle time
+
+// Matching (all in the 109-unit KanjiVG canvas space):
+const SAMPLE_N = 16; // points each stroke is resampled to
+const MATCH_THRESH = 20; // mean point distance below which a stroke matches
+const DOT_LEN = 14; // strokes shorter than this are dots (点)
+const DOT_TOL = 22; // a dot matches if drawn within this of its centre
 
 type Mode = "demo" | "hint" | "challenge";
 const MODES: { id: Mode; label: string }[] = [
@@ -96,12 +104,16 @@ const createSfx = () => {
 
 const CSS = `
 .kw-stroke{fill:none;stroke-width:6.5;stroke-linecap:round;stroke-linejoin:round;transition:opacity .2s ease-out}
+.kw-wrong{stroke:#ef4444!important}
+.kw-ink{fill:none;stroke:#22c55e;stroke-width:6.5;stroke-linecap:round;stroke-linejoin:round;opacity:.9;pointer-events:none}
 @keyframes kw-pop{0%{transform:scale(.5);opacity:0}60%{transform:scale(1.15);opacity:1}100%{transform:scale(1);opacity:1}}
 .kw-pop{animation:kw-pop .25s ease-out}
 @keyframes kw-shake{10%,90%{transform:translateX(-5px)}30%,70%{transform:translateX(5px)}50%{transform:translateX(-3px)}}
 .kw-shake{animation:kw-shake .3s}
 @keyframes kw-good{0%{transform:scale(.6);opacity:0}40%{transform:scale(1.3);opacity:1}100%{transform:scale(1.6) translateY(-24px);opacity:0}}
 .kw-good{animation:kw-good .55s ease-out forwards}
+@keyframes kw-fade{to{opacity:0}}
+.kw-fade{animation:kw-fade .4s ease-out forwards}
 @keyframes kw-blink{50%{opacity:.4}}
 .kw-timer-danger{background:#ef4444!important;animation:kw-blink .4s linear infinite}
 `;
@@ -128,10 +140,9 @@ const SKELETON = `
     <div data-kw="stage" class="relative flex-1 min-h-0 flex items-center justify-center m-2 rounded-box bg-base-200 text-base-content" style="touch-action:none">
       <div data-kw="fx" class="absolute inset-0 pointer-events-none overflow-hidden"></div>
     </div>
-    <div class="flex flex-col items-center gap-0.5 pb-2 min-h-[4.5rem] justify-center">
-      <div data-kw="arrow" class="text-6xl leading-none h-[3.5rem] text-primary"></div>
-      <div data-kw="progress" class="text-xs opacity-60"></div>
-      <div class="text-xs opacity-40">ゆびで ほうこうに スワイプ！</div>
+    <div class="flex flex-col items-center gap-0.5 pb-2">
+      <div data-kw="progress" class="text-sm opacity-70"></div>
+      <div class="text-xs opacity-40">なぞって かこう！</div>
     </div>
   </div>
 `;
@@ -172,7 +183,6 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
     quiz,
     (Math.random() * 0x7fffffff) | 0,
   );
-  let strokes: readonly (readonly number[])[] = [];
   let paths: readonly string[] = [];
   let strokeIndex = 0;
   let round = 0;
@@ -182,9 +192,10 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
   let resolved = false;
 
   let stageEl!: HTMLDivElement;
+  let svgEl: SVGSVGElement | null = null;
   let pathEls: SVGPathElement[] = [];
-  let dragStart: Pt | null = null;
-  let points: Pt[] = [];
+  let dragStart: P | null = null;
+  let points: P[] = [];
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
   let timerIds: ReturnType<typeof setTimeout>[] = [];
   let hintRevealed = false;
@@ -194,6 +205,26 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
   const renderHud = () => {
     el("round").textContent = `${round} / ${ROUNDS_TO_CLEAR}`;
     el("streak").textContent = streak >= 2 ? `🔥×${streak}` : "";
+  };
+
+  const renderModes = () => {
+    const wrap = el("modes");
+    wrap.innerHTML = "";
+    for (const m of MODES) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "btn btn-xs " +
+        (m.id === mode ? "btn-primary" : "btn-ghost");
+      b.textContent = m.label;
+      b.addEventListener("click", () => setMode(m.id));
+      wrap.appendChild(b);
+    }
+  };
+
+  const renderProgress = () => {
+    el("progress").textContent = `${paths.length}画中 ${
+      Math.min(strokeIndex + 1, paths.length)
+    }画目`;
   };
 
   // ---- per-kanji countdown (画数 + TIME_BONUS_SEC seconds) ----
@@ -207,7 +238,7 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
   };
 
   const startTimer = () => {
-    const secs = strokes.length + TIME_BONUS_SEC;
+    const secs = paths.length + TIME_BONUS_SEC;
     const bar = el("timer");
     bar.classList.remove("kw-timer-danger");
     bar.style.transition = "none";
@@ -228,23 +259,8 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
     if (resolved) return;
     resolved = true;
     clearIdle();
-    el("arrow").textContent = "";
     sfx.wrong();
     schedule(() => renderEnd(false), 600);
-  };
-
-  const renderModes = () => {
-    const wrap = el("modes");
-    wrap.innerHTML = "";
-    for (const m of MODES) {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "btn btn-xs " +
-        (m.id === mode ? "btn-primary" : "btn-ghost");
-      b.textContent = m.label;
-      b.addEventListener("click", () => setMode(m.id));
-      wrap.appendChild(b);
-    }
   };
 
   // ---- center kanji (KanjiVG strokes) ----
@@ -265,12 +281,19 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
       return p;
     });
     stageEl.insertBefore(svg, fx);
+    svgEl = svg;
   };
 
-  // done strokes solid; in おてほん the rest is faint; otherwise hidden.
+  // done strokes solid; the current/future depend on mode + hint.
   const renderStrokeStates = () => {
     pathEls.forEach((p, i) => {
-      p.style.opacity = i < strokeIndex ? "1" : mode === "demo" ? "0.14" : "0";
+      p.classList.remove("kw-wrong");
+      let op: string;
+      if (i < strokeIndex) op = "1";
+      else if (i === strokeIndex) {
+        op = mode === "demo" || (mode === "hint" && hintRevealed) ? "0.3" : "0";
+      } else op = mode === "demo" ? "0.13" : "0";
+      p.style.opacity = op;
     });
   };
 
@@ -282,36 +305,22 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
     p.classList.add("kw-pop");
   };
 
-  // ---- bottom arrow ----
+  // ---- coordinate mapping & stroke sampling ----
 
-  const arrowVisible = () =>
-    mode === "demo" || (mode === "hint" && hintRevealed);
-
-  const currentStroke = (): readonly number[] | null =>
-    strokes[strokeIndex] ?? null;
-
-  // A whole stroke's arrows, e.g. a bent ┓ shows "→↓".
-  const strokeArrows = (s: readonly number[]): string =>
-    s.map((d) => DIR_ARROWS[d]).join("");
-
-  const renderArrow = (danger = false) => {
-    const a = el("arrow");
-    const s = currentStroke();
-    const show = danger || (arrowVisible() && !resolved);
-    a.textContent = show && s ? strokeArrows(s) : "";
-    a.classList.toggle("text-error", danger);
-    a.classList.toggle("text-primary", !danger);
-    if (a.textContent) {
-      a.classList.remove("kw-pop");
-      void a.offsetWidth;
-      a.classList.add("kw-pop");
-    }
+  // screen (client) point → SVG user units (0..109), via the SVG's CTM.
+  const toUser = (sx: number, sy: number): P => {
+    const ctm = svgEl?.getScreenCTM();
+    if (!ctm) return { x: sx, y: sy };
+    const pt = new DOMPoint(sx, sy).matrixTransform(ctm.inverse());
+    return { x: pt.x, y: pt.y };
   };
 
-  const renderProgress = () => {
-    el("progress").textContent = `${strokes.length}画中 ${
-      Math.min(strokeIndex + 1, strokes.length)
-    }画目`;
+  const sampleTarget = (pathEl: SVGPathElement, n: number): P[] => {
+    const len = pathEl.getTotalLength();
+    return Array.from({ length: n }, (_, i) => {
+      const pt = pathEl.getPointAtLength((len * i) / (n - 1));
+      return { x: pt.x, y: pt.y };
+    });
   };
 
   // ---- idle hint timer (ヒント) ----
@@ -329,7 +338,7 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
     idleTimer = schedule(() => {
       idleTimer = null;
       hintRevealed = true;
-      renderArrow();
+      renderStrokeStates();
     }, HINT_IDLE_MS);
   };
 
@@ -339,7 +348,6 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
     clearIdle();
     renderModes();
     renderStrokeStates();
-    renderArrow();
     startIdle();
   };
 
@@ -360,49 +368,52 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
     stageEl.classList.add("kw-shake");
   };
 
-  // ---- flow ----
-
-  // Whether a finished drag's directions satisfy the expected stroke. Single
-  // strokes are judged by net direction (wobble-tolerant); a bent stroke needs
-  // its corner, so its segmented sequence must match exactly.
-  const strokeMatches = (
-    g: readonly number[],
-    net: number,
-    e: readonly number[],
-  ): boolean => {
-    if (e.length === 1) {
-      return net === e[0] || (g.length === 1 && g[0] === e[0]);
-    }
-    return g.length === e.length && e.every((d, i) => g[i] === d);
+  // Draw the player's raw ink briefly, so a swipe is visible.
+  const showInk = () => {
+    if (!svgEl || points.length < 2) return;
+    const d = points.map((p, i) => {
+      const u = toUser(p.x, p.y);
+      return `${i === 0 ? "M" : "L"}${u.x.toFixed(1)},${u.y.toFixed(1)}`;
+    }).join(" ");
+    const ink = document.createElementNS(SVG_NS, "path");
+    ink.setAttribute("d", d);
+    ink.setAttribute("class", "kw-ink kw-fade");
+    svgEl.appendChild(ink);
+    schedule(() => ink.remove(), 400);
   };
+
+  // ---- flow ----
 
   const onStrokeCorrect = () => {
     hintRevealed = false;
     sfx.stroke(strokeIndex);
     popGood();
-    popStrokeDone(); // color the just-finished stroke
+    popStrokeDone();
     strokeIndex++;
     renderStrokeStates();
     renderProgress();
-    if (strokeIndex >= strokes.length) {
+    if (strokeIndex >= paths.length) {
       onKanjiDone();
       return;
     }
-    renderArrow();
     startIdle();
   };
 
-  // A wrong stroke no longer ends the game — it just costs time. The clock
-  // keeps running; we shake and flash the correct direction as a nudge.
+  // A wrong stroke no longer ends the game — it just costs time. Flash the
+  // correct stroke shape in red as a nudge.
   const onStrokeWrong = () => {
     kanjiHadMistake = true;
     sfx.wrong();
     shakeStage();
-    renderArrow(true); // flash the correct direction in red
+    const p = pathEls[strokeIndex];
+    if (p) {
+      p.classList.add("kw-wrong");
+      p.style.opacity = "0.6";
+    }
     schedule(() => {
       if (!disposed && !resolved) {
         hintRevealed = false;
-        renderArrow();
+        renderStrokeStates();
         startIdle();
       }
     }, 700);
@@ -412,7 +423,6 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
     resolved = true;
     stopTimer();
     clearIdle();
-    el("arrow").textContent = "";
     sfx.done();
     if (kanjiHadMistake) session.markWrong();
     else streak++;
@@ -428,7 +438,6 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
     resolved = false;
     hintRevealed = false;
     const q = session.next();
-    strokes = q.strokes ?? [];
     paths = q.paths ?? [];
     strokeIndex = 0;
     kanjiHadMistake = false;
@@ -436,9 +445,29 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
     buildSvg();
     renderStrokeStates();
     renderProgress();
-    renderArrow();
     startTimer();
     startIdle();
+  };
+
+  // ---- matching ----
+
+  // Does the drawn gesture match the current expected stroke's shape?
+  const gestureMatches = (): boolean => {
+    const targetEl = pathEls[strokeIndex];
+    if (!targetEl) return false;
+    const drawnUser = points.map((p) => toUser(p.x, p.y));
+    const tLen = targetEl.getTotalLength();
+    if (tLen < DOT_LEN) {
+      // Dot (点): accept a tap/short mark near its centre.
+      const mid = sampleTarget(targetEl, 3)[1];
+      const near =
+        pointDistance(drawnUser[drawnUser.length - 1], mid) < DOT_TOL ||
+        pointDistance(centroid(drawnUser), mid) < DOT_TOL;
+      return near;
+    }
+    const target = sampleTarget(targetEl, SAMPLE_N);
+    const drawn = resample(drawnUser, SAMPLE_N);
+    return meanDistance(drawn, target) < MATCH_THRESH;
   };
 
   // ---- pointer ----
@@ -448,14 +477,13 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
     dragStart = { x: e.clientX, y: e.clientY };
     points = [dragStart];
     stageEl.setPointerCapture(e.pointerId);
-    // Interacting resets the idle hint (but keep an already-revealed arrow).
     clearIdle();
   };
 
   const onPointerMove = (e: PointerEvent) => {
     if (!dragStart) return;
     const last = points[points.length - 1];
-    if (Math.hypot(e.clientX - last.x, e.clientY - last.y) >= 3) {
+    if (Math.hypot(e.clientX - last.x, e.clientY - last.y) >= 2) {
       points.push({ x: e.clientX, y: e.clientY });
     }
   };
@@ -466,18 +494,16 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
     dragStart = null;
     if (resolved) return;
     points.push({ x: e.clientX, y: e.clientY });
-    const netX = e.clientX - start.x, netY = e.clientY - start.y;
-    const g = gestureDirs(points);
-    if (Math.hypot(netX, netY) < MIN_SWIPE && g.length === 0) {
-      startIdle(); // a tap — resume the idle countdown
+    const net = Math.hypot(e.clientX - start.x, e.clientY - start.y);
+    const targetEl = pathEls[strokeIndex];
+    const isDot = targetEl && targetEl.getTotalLength() < DOT_LEN;
+    if (net < MIN_SWIPE && !isDot) {
+      startIdle(); // a tap on a normal stroke — resume the idle countdown
       return;
     }
-    const expected = currentStroke();
-    if (expected && strokeMatches(g, quantize8(netX, netY), expected)) {
-      onStrokeCorrect();
-    } else {
-      onStrokeWrong();
-    }
+    showInk();
+    if (gestureMatches()) onStrokeCorrect();
+    else onStrokeWrong();
   };
 
   // ---- lifecycle ----

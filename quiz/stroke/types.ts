@@ -1,31 +1,17 @@
 /**
- * Stroke-order quiz abstraction — parallel to `quiz/types.ts` (the 4-choice
- * `Quiz`). A `StrokeQuiz` answers with an *ordered list of stroke directions*
- * (8-way codes, see `dir.ts`) instead of picking one of several options.
- * Kanji is one implementation (`kanji.ts`); katakana / digits can follow the
- * same shape later.
+ * Kanji-writing quiz. (Formerly a subject-agnostic "stroke direction" quiz;
+ * now kanji-specific — a stroke is matched by the *shape* of its KanjiVG path,
+ * not a reduced direction code, so curves, bends and hooks are handled without
+ * simplification.)
  */
 
 export type StrokeQuiz = {
-  /** The character to write, shown large in the center (e.g. "大"). */
+  /** The kanji to write, drawn from `paths` (also the answer). */
   label: string;
-  /**
-   * Optional question text identifying the character *without* being the
-   * character itself — e.g. its reading "おおきい". Shown as the prompt so the
-   * player recalls which kanji to write.
-   */
+  /** Reading shown as the prompt, e.g. "おおきい" — recall which kanji to write. */
   prompt?: string;
-  /**
-   * Strokes in writing order. Each stroke is one or more 8-direction codes
-   * (see `quantize8` / `DIR_ARROWS`) — a bent stroke like ┓ is `[0, 2]` (→↓),
-   * swiped as two flicks. Used to match the player's swipes.
-   */
-  strokes: readonly (readonly number[])[];
-  /**
-   * Optional per-stroke render paths (SVG "d", 109x109 viewBox), aligned with
-   * `strokes`. Lets the game draw the character one stroke at a time.
-   */
-  paths?: readonly string[];
+  /** KanjiVG stroke paths (SVG "d", 109x109 viewBox) in writing order. */
+  paths: readonly string[];
 };
 
 export type StrokeQuizGenerator = {

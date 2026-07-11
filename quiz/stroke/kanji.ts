@@ -9,7 +9,6 @@
 import { PRNG } from "../prng.ts";
 import type { KanjiEntry } from "../kanji/common.ts";
 import type { StrokeQuizGenerator } from "./types.ts";
-import { KANJI_STROKES } from "./kanji_strokes.ts";
 import { KANJI_PATHS } from "./kanji_paths.ts";
 import { KanjiList as L1 } from "../kanji/1.ts";
 import { KanjiList as L2 } from "../kanji/2.ts";
@@ -24,7 +23,7 @@ const readingWord = (e: KanjiEntry): string =>
 
 // Entries of a grade we have stroke data for (a 404 during generation drops it).
 const gradeEntries = (list: readonly KanjiEntry[]): KanjiEntry[] =>
-  list.filter((e) => e.q in KANJI_STROKES);
+  list.filter((e) => e.q in KANJI_PATHS);
 
 const makeGen = (
   entries: readonly KanjiEntry[],
@@ -35,7 +34,6 @@ const makeGen = (
   return {
     label: e.q,
     prompt: readingWord(e),
-    strokes: KANJI_STROKES[e.q],
     paths: KANJI_PATHS[e.q],
   };
 };
