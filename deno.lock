@@ -284,6 +284,7 @@
     "members": {
       "quiz": {
         "dependencies": [
+          "jsr:@std/assert@^1.0.19",
           "npm:pure-rand@^8.4.0"
         ]
       },
@@ -313,6 +314,11 @@
           "npm:@remix-run/fetch-router@0.18.2",
           "npm:@remix-run/html-template@0.3.0",
           "npm:@remix-run/ui@~0.1.1"
+        ]
+      },
+      "tools": {
+        "dependencies": [
+          "jsr:@std/assert@^1.0.19"
         ]
       }
     }

@@ -55,6 +55,26 @@ deno task check    # check + lint + fmt
 クイズ追加: 新規ファイルで `QuizGenerator[]` を default export し、
 `quiz/mod.ts` の配列に `...newTopic` で足す。
 
+## ストローク（書き取り）クイズ
+
+`Quiz`（4択）とは別系統の抽象。「順序付きストローク列＝方向コード列で答える
+問題」を表し、漢字かきとりゲームが使う。
+
+- `quiz/stroke/types.ts` — `StrokeQuiz`（`label` ＋ 8方向コード列 `strokes`）と
+  `StrokeQuizGenerator`
+- `quiz/stroke/dir.ts` — `quantize8()` と
+  `DIR_ARROWS`（生成スクリプトとゲームで共有）
+- `quiz/stroke/kanji_strokes.ts` —
+  **自動生成**（`tools/gen_kanji_strokes.ts`）。 KanjiVG
+  由来のストロークデータで、CC BY-SA 3.0（`/NOTICE` 参照）。編集しない
+- `quiz/stroke/mod.ts` — stroke 系 `StrokeQuizGenerator` を flat 集約
+- データ再生成:
+  `deno task gen:strokes`（ローカルで1回、要ネット。成果物をコミット）
+
+ストローク系ゲームは `src/client/games/stroke_types.ts` の `StrokeGameMount` を
+実装し、`menu.tsx` は `isStroke()` でクイズ一覧と mount
+先を出し分ける（4択ゲーム とは別のクイズ配列 `quiz/stroke/mod.ts` から選ぶ）。
+
 ## ゲーム追加手順
 
 1. `src/client/games/<name>/mod.ts` を作る。

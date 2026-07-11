@@ -10,3 +10,4 @@ apm.lock.yaml
 apm_modules/
 .claude/skills
 .github/skills
+tools/.cache/

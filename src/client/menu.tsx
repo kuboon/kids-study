@@ -11,16 +11,29 @@ import {
   type SerializableValue,
 } from "@remix-run/ui";
 import quizzes from "../../quiz/mod.ts";
+import strokeQuizzes from "../../quiz/stroke/mod.ts";
 import type { GameModule } from "./games/types.ts";
 
-type GameKind =
+// Two domains of game: 4-choice `Quiz` games vs stroke-writing `StrokeQuiz`
+// games. Each domain draws from its own quiz list, so a stroke game can never
+// be handed an arithmetic/katakana quiz.
+type QuizKind =
   | "simple"
   | "gate-runner"
   | "minecart"
   | "boss-battle"
   | "target-shooter";
+type StrokeKind = "kanji-writer";
+type GameKind = QuizKind | StrokeKind;
 
-const loadGame = async (kind: GameKind): Promise<GameModule> => {
+const STROKE_KINDS: readonly GameKind[] = ["kanji-writer"];
+const isStroke = (k: GameKind): k is StrokeKind => STROKE_KINDS.includes(k);
+
+// The quiz list to show for a given game (both have `title`).
+const listFor = (k: GameKind): readonly { title: string }[] =>
+  isStroke(k) ? strokeQuizzes : quizzes;
+
+const loadGame = async (kind: QuizKind): Promise<GameModule> => {
   const mod = kind === "simple"
     ? await import("./games/simple/mod.ts")
     : kind === "minecart"
@@ -70,13 +83,22 @@ export const Menu = clientEntry(
               class="block w-full h-full bg-base-300"
               mix={[
                 ref((el, signal) => {
-                  loadGame(game).then((g) => {
-                    if (signal.aborted) return;
-                    const teardown = g.mount(el as HTMLElement, {
-                      quiz: quizzes[idx],
+                  const host = el as HTMLElement;
+                  if (isStroke(game)) {
+                    import("./games/kanji-writer/mod.ts").then((m) => {
+                      if (signal.aborted) return;
+                      const teardown = m.default.mount(host, {
+                        quiz: strokeQuizzes[idx],
+                      });
+                      signal.addEventListener("abort", () => teardown());
                     });
-                    signal.addEventListener("abort", () => teardown());
-                  });
+                  } else {
+                    loadGame(game).then((g) => {
+                      if (signal.aborted) return;
+                      const teardown = g.mount(host, { quiz: quizzes[idx] });
+                      signal.addEventListener("abort", () => teardown());
+                    });
+                  }
                 }),
               ]}
             />
@@ -123,11 +145,17 @@ export const Menu = clientEntry(
                 >
                   まとあて
                 </option>
+                <option
+                  value="kanji-writer"
+                  selected={game === "kanji-writer"}
+                >
+                  漢字かきとり
+                </option>
               </select>
             </fieldset>
 
             <ul class="menu bg-base-200 rounded-box w-full text-base">
-              {quizzes.map((q, i) => (
+              {listFor(game).map((q, i) => (
                 <li>
                   <button
                     type="button"
