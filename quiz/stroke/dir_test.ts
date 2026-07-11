@@ -1,5 +1,37 @@
 import { assertEquals } from "@std/assert";
-import { DIR_ARROWS, DIRS, quantize8 } from "./dir.ts";
+import { DIR_ARROWS, DIRS, gestureDirs, quantize8 } from "./dir.ts";
+
+// helper: build a straight run of points from (x0,y0) toward (x1,y1)
+const line = (x0: number, y0: number, x1: number, y1: number, n = 12) =>
+  Array.from({ length: n + 1 }, (_, i) => ({
+    x: x0 + (x1 - x0) * i / n,
+    y: y0 + (y1 - y0) * i / n,
+  }));
+
+Deno.test("gestureDirs: straight drag is one direction", () => {
+  assertEquals(gestureDirs(line(0, 0, 120, 0)), [0]); // →
+  assertEquals(gestureDirs(line(0, 0, 0, 120)), [2]); // ↓
+});
+
+Deno.test("gestureDirs: an L-shaped drag (┓) is two directions", () => {
+  // right, then down, one continuous path (no lift).
+  const pts = [...line(0, 0, 120, 0), ...line(120, 0, 120, 120)];
+  assertEquals(gestureDirs(pts), [0, 2]); // →↓
+});
+
+Deno.test("gestureDirs: slight wobble stays one direction", () => {
+  const pts = [
+    { x: 0, y: 0 },
+    { x: 40, y: 4 },
+    { x: 80, y: -3 },
+    { x: 120, y: 2 },
+  ];
+  assertEquals(gestureDirs(pts), [0]); // still →
+});
+
+Deno.test("gestureDirs: a tiny drag yields nothing", () => {
+  assertEquals(gestureDirs(line(0, 0, 5, 0)), []);
+});
 
 // screen-y-down: +x=right(E), +y=down(S).
 Deno.test("quantize8 cardinal directions", () => {

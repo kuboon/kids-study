@@ -1,15 +1,22 @@
 /**
  * Kanji Writer — write a kanji by swiping each stroke's direction in order,
  * fighting-game-command style. The kanji is drawn from KanjiVG paths one
- * stroke at a time as you get each stroke right; a bent stroke (e.g. ┓) takes
- * two flicks (→ then ↓). The prompt is the reading, so you recall which kanji
- * to write. Three modes dial the help from "show me" to "test me".
+ * stroke at a time as you get each stroke right; a bent stroke (e.g. ┓) is
+ * one continuous L-shaped drag (→ then ↓ without lifting the finger), its
+ * corner recognized by `gestureDirs`. The prompt is the reading, so you
+ * recall which kanji to write. Three modes dial the help from "show me" to
+ * "test me".
  *
  * Stroke data derived from KanjiVG (CC BY-SA 3.0); see /NOTICE.
  */
 
 import { createSession, type Session } from "../../../../quiz/session.ts";
-import { DIR_ARROWS, quantize8 } from "../../../../quiz/stroke/dir.ts";
+import {
+  DIR_ARROWS,
+  gestureDirs,
+  type Pt,
+  quantize8,
+} from "../../../../quiz/stroke/dir.ts";
 import type { StrokeQuiz } from "../../../../quiz/stroke/types.ts";
 import type { StrokeGameModule, StrokeGameMount } from "../stroke_types.ts";
 
@@ -160,7 +167,6 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
   let strokes: readonly (readonly number[])[] = [];
   let paths: readonly string[] = [];
   let strokeIndex = 0;
-  let subIndex = 0;
   let hearts = MAX_HEARTS;
   let round = 0;
   let streak = 0;
@@ -170,7 +176,8 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
 
   let stageEl!: HTMLDivElement;
   let pathEls: SVGPathElement[] = [];
-  let dragStart: { x: number; y: number } | null = null;
+  let dragStart: Pt | null = null;
+  let points: Pt[] = [];
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
   let hintRevealed = false;
 
@@ -237,16 +244,18 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
   const arrowVisible = () =>
     mode === "demo" || (mode === "hint" && hintRevealed);
 
-  const nextDir = (): number | null => {
-    const s = strokes[strokeIndex];
-    return s ? s[subIndex] : null;
-  };
+  const currentStroke = (): readonly number[] | null =>
+    strokes[strokeIndex] ?? null;
+
+  // A whole stroke's arrows, e.g. a bent ┓ shows "→↓".
+  const strokeArrows = (s: readonly number[]): string =>
+    s.map((d) => DIR_ARROWS[d]).join("");
 
   const renderArrow = (danger = false) => {
     const a = el("arrow");
-    const dir = nextDir();
+    const s = currentStroke();
     const show = danger || (arrowVisible() && !resolved);
-    a.textContent = show && dir !== null ? DIR_ARROWS[dir] : "";
+    a.textContent = show && s ? strokeArrows(s) : "";
     a.classList.toggle("text-error", danger);
     a.classList.toggle("text-primary", !danger);
     if (a.textContent) {
@@ -310,22 +319,31 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
 
   // ---- flow ----
 
-  const onStrokeOk = () => {
+  // Whether a finished drag's directions satisfy the expected stroke. Single
+  // strokes are judged by net direction (wobble-tolerant); a bent stroke needs
+  // its corner, so its segmented sequence must match exactly.
+  const strokeMatches = (
+    g: readonly number[],
+    net: number,
+    e: readonly number[],
+  ): boolean => {
+    if (e.length === 1) {
+      return net === e[0] || (g.length === 1 && g[0] === e[0]);
+    }
+    return g.length === e.length && e.every((d, i) => g[i] === d);
+  };
+
+  const onStrokeCorrect = () => {
     hintRevealed = false;
     sfx.stroke(strokeIndex);
     popGood();
-    subIndex++;
-    if (subIndex >= strokes[strokeIndex].length) {
-      // whole stroke done → color it in and advance
-      popStrokeDone();
-      strokeIndex++;
-      subIndex = 0;
-      renderStrokeStates();
-      renderProgress();
-      if (strokeIndex >= strokes.length) {
-        onKanjiDone();
-        return;
-      }
+    popStrokeDone(); // color the just-finished stroke
+    strokeIndex++;
+    renderStrokeStates();
+    renderProgress();
+    if (strokeIndex >= strokes.length) {
+      onKanjiDone();
+      return;
     }
     renderArrow();
     startIdle();
@@ -375,7 +393,6 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
     strokes = q.strokes ?? [];
     paths = q.paths ?? [];
     strokeIndex = 0;
-    subIndex = 0;
     kanjiHadMistake = false;
     el("prompt").textContent = q.prompt ?? q.label;
     buildSvg();
@@ -390,24 +407,38 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
   const onPointerDown = (e: PointerEvent) => {
     if (resolved) return;
     dragStart = { x: e.clientX, y: e.clientY };
+    points = [dragStart];
     stageEl.setPointerCapture(e.pointerId);
     // Interacting resets the idle hint (but keep an already-revealed arrow).
     clearIdle();
   };
 
+  const onPointerMove = (e: PointerEvent) => {
+    if (!dragStart) return;
+    const last = points[points.length - 1];
+    if (Math.hypot(e.clientX - last.x, e.clientY - last.y) >= 3) {
+      points.push({ x: e.clientX, y: e.clientY });
+    }
+  };
+
   const onPointerUp = (e: PointerEvent) => {
     if (!dragStart) return;
-    const dx = e.clientX - dragStart.x;
-    const dy = e.clientY - dragStart.y;
+    const start = dragStart;
     dragStart = null;
     if (resolved) return;
-    if (Math.hypot(dx, dy) < MIN_SWIPE) {
+    points.push({ x: e.clientX, y: e.clientY });
+    const netX = e.clientX - start.x, netY = e.clientY - start.y;
+    const g = gestureDirs(points);
+    if (Math.hypot(netX, netY) < MIN_SWIPE && g.length === 0) {
       startIdle(); // a tap — resume the idle countdown
       return;
     }
-    const dir = quantize8(dx, dy);
-    if (dir === nextDir()) onStrokeOk();
-    else onStrokeWrong();
+    const expected = currentStroke();
+    if (expected && strokeMatches(g, quantize8(netX, netY), expected)) {
+      onStrokeCorrect();
+    } else {
+      onStrokeWrong();
+    }
   };
 
   // ---- lifecycle ----
@@ -448,6 +479,7 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
     host.innerHTML = SKELETON;
     stageEl = el<HTMLDivElement>("stage");
     stageEl.addEventListener("pointerdown", onPointerDown);
+    stageEl.addEventListener("pointermove", onPointerMove);
     stageEl.addEventListener("pointerup", onPointerUp);
     stageEl.addEventListener("pointercancel", () => {
       dragStart = null;
