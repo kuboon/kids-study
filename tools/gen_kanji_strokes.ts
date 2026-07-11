@@ -10,14 +10,7 @@
  * licensed CC BY-SA 3.0. The extracted path data is likewise CC BY-SA 3.0.
  */
 
-import { KanjiList as L1 } from "../quiz/kanji/1.ts";
-import { KanjiList as L2 } from "../quiz/kanji/2.ts";
-import { KanjiList as L3 } from "../quiz/kanji/3.ts";
-import { KanjiList as L4 } from "../quiz/kanji/4.ts";
-import { KanjiList as L5 } from "../quiz/kanji/5.ts";
-import { KanjiList as L6 } from "../quiz/kanji/6.ts";
-
-const GRADE_LISTS = [L1, L2, L3, L4, L5, L6];
+import { GRADE_WORDS } from "../quiz/stroke/words.ts";
 
 const CACHE_DIR = new URL("./.cache/kanjivg/", import.meta.url);
 const OUT_PATHS = new URL("../quiz/stroke/kanji_paths.ts", import.meta.url);
@@ -81,12 +74,11 @@ const fetchSvg = async (ch: string): Promise<string | null> => {
 const collectChars = (): string[] => {
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const list of GRADE_LISTS) {
-    for (const entry of list) {
-      const ch = entry.q;
-      if (ch.length >= 1 && !seen.has(ch)) {
-        seen.add(ch);
-        out.push(ch);
+  for (const words of GRADE_WORDS) {
+    for (const w of words) {
+      if (!seen.has(w.kanji)) {
+        seen.add(w.kanji);
+        out.push(w.kanji);
       }
     }
   }

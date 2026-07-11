@@ -1,53 +1,31 @@
 /**
- * Kanji implementation of the stroke-quiz abstraction. Reuses the existing
- * grade word lists (`quiz/kanji/{1..6}.ts`): each entry gives a reading
- * (`a` + okurigana `qPost`) used as the *prompt*, and its kanji (`q`) is what
- * the player writes — paired with the generated stroke directions and the
- * KanjiVG render paths.
+ * Kanji-writing generators, one per grade, built from the independent
+ * `words.ts` list (NOT the 4-choice `quiz/kanji/*` data). Each prompt is a
+ * reading with the kanji's part bracketed; the player writes that kanji,
+ * matched against its KanjiVG paths.
  */
 
 import { PRNG } from "../prng.ts";
-import type { KanjiEntry } from "../kanji/common.ts";
 import type { StrokeQuizGenerator } from "./types.ts";
 import { KANJI_PATHS } from "./kanji_paths.ts";
-import { KanjiList as L1 } from "../kanji/1.ts";
-import { KanjiList as L2 } from "../kanji/2.ts";
-import { KanjiList as L3 } from "../kanji/3.ts";
-import { KanjiList as L4 } from "../kanji/4.ts";
-import { KanjiList as L5 } from "../kanji/5.ts";
-import { KanjiList as L6 } from "../kanji/6.ts";
+import { displayWord, GRADE_WORDS, type WriteWord } from "./words.ts";
 
-// The reading word for the prompt, e.g. 大(a="おお", qPost="きい") → "おおきい".
-const readingWord = (e: KanjiEntry): string =>
-  `${e.qPre ?? ""}${e.a}${e.qPost}`;
+// Keep only words whose kanji we have stroke paths for.
+const playable = (words: readonly WriteWord[]): WriteWord[] =>
+  words.filter((w) => w.kanji in KANJI_PATHS);
 
-// Entries of a grade we have stroke data for (a 404 during generation drops it).
-const gradeEntries = (list: readonly KanjiEntry[]): KanjiEntry[] =>
-  list.filter((e) => e.q in KANJI_PATHS);
-
-const makeGen = (
-  entries: readonly KanjiEntry[],
-): StrokeQuizGenerator["fn"] =>
-(seed) => {
-  const prng = new PRNG(seed);
-  const e = entries[prng.uniformInt(0, entries.length - 1)];
-  return {
-    label: e.q,
-    prompt: readingWord(e),
-    paths: KANJI_PATHS[e.q],
+const makeGen =
+  (words: readonly WriteWord[]): StrokeQuizGenerator["fn"] => (seed) => {
+    const prng = new PRNG(seed);
+    const w = words[prng.uniformInt(0, words.length - 1)];
+    return {
+      label: w.kanji,
+      prompt: displayWord(w),
+      paths: KANJI_PATHS[w.kanji],
+    };
   };
-};
 
-const GRADES: { title: string; list: readonly KanjiEntry[] }[] = [
-  { title: "1年生の漢字（かきとり）", list: L1 },
-  { title: "2年生の漢字（かきとり）", list: L2 },
-  { title: "3年生の漢字（かきとり）", list: L3 },
-  { title: "4年生の漢字（かきとり）", list: L4 },
-  { title: "5年生の漢字（かきとり）", list: L5 },
-  { title: "6年生の漢字（かきとり）", list: L6 },
-];
-
-export default GRADES.map(({ title, list }) => ({
-  title,
-  fn: makeGen(gradeEntries(list)),
+export default GRADE_WORDS.map((words, i) => ({
+  title: `${i + 1}年生の漢字（かきとり）`,
+  fn: makeGen(playable(words)),
 })) satisfies StrokeQuizGenerator[];
