@@ -21,7 +21,9 @@ import type { StrokeQuiz } from "../../../../quiz/stroke/types.ts";
 import type { StrokeGameModule, StrokeGameMount } from "../stroke_types.ts";
 
 const ROUNDS_TO_CLEAR = 5;
-const MAX_HEARTS = 3;
+// Per-kanji time limit = stroke count + this many seconds. Run out → おしまい.
+const TIME_BONUS_SEC = 3;
+const TIME_DANGER_SEC = 3; // the bar blinks red for the final stretch
 const MIN_SWIPE = 24; // px; shorter drags are taps and ignored
 const HINT_IDLE_MS = 1000; // ヒント: reveal the next arrow after this idle time
 
@@ -100,13 +102,14 @@ const CSS = `
 .kw-shake{animation:kw-shake .3s}
 @keyframes kw-good{0%{transform:scale(.6);opacity:0}40%{transform:scale(1.3);opacity:1}100%{transform:scale(1.6) translateY(-24px);opacity:0}}
 .kw-good{animation:kw-good .55s ease-out forwards}
+@keyframes kw-blink{50%{opacity:.4}}
+.kw-timer-danger{background:#ef4444!important;animation:kw-blink .4s linear infinite}
 `;
 
 const SKELETON = `
   <style>${CSS}</style>
   <div class="absolute inset-0 flex flex-col bg-base-100 overflow-hidden select-none">
     <div class="flex items-center gap-2 px-3 pt-2 pl-12">
-      <span data-kw="hearts" class="text-2xl whitespace-nowrap"></span>
       <div class="flex-1 text-center leading-tight">
         <div class="text-xs opacity-50">この よみの かんじ</div>
         <div data-kw="prompt" class="text-2xl font-bold"></div>
@@ -117,6 +120,11 @@ const SKELETON = `
       </div>
     </div>
     <div data-kw="modes" class="flex justify-center gap-1 pt-1"></div>
+    <div class="px-3 pt-1">
+      <div class="h-2 bg-base-300 rounded-full overflow-hidden">
+        <div data-kw="timer" class="h-full bg-info" style="width:100%"></div>
+      </div>
+    </div>
     <div data-kw="stage" class="relative flex-1 min-h-0 flex items-center justify-center m-2 rounded-box bg-base-200 text-base-content" style="touch-action:none">
       <div data-kw="fx" class="absolute inset-0 pointer-events-none overflow-hidden"></div>
     </div>
@@ -167,7 +175,6 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
   let strokes: readonly (readonly number[])[] = [];
   let paths: readonly string[] = [];
   let strokeIndex = 0;
-  let hearts = MAX_HEARTS;
   let round = 0;
   let streak = 0;
   let mode: Mode = "demo";
@@ -179,15 +186,51 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
   let dragStart: Pt | null = null;
   let points: Pt[] = [];
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
+  let timerIds: ReturnType<typeof setTimeout>[] = [];
   let hintRevealed = false;
 
   // ---- HUD ----
 
   const renderHud = () => {
-    el("hearts").textContent = "❤️".repeat(hearts) +
-      "🖤".repeat(MAX_HEARTS - hearts);
     el("round").textContent = `${round} / ${ROUNDS_TO_CLEAR}`;
     el("streak").textContent = streak >= 2 ? `🔥×${streak}` : "";
+  };
+
+  // ---- per-kanji countdown (画数 + TIME_BONUS_SEC seconds) ----
+
+  const stopTimer = () => {
+    for (const id of timerIds) unschedule(id);
+    timerIds = [];
+    const bar = el("timer");
+    bar.style.transition = "none";
+    bar.style.width = getComputedStyle(bar).width; // freeze where it is
+  };
+
+  const startTimer = () => {
+    const secs = strokes.length + TIME_BONUS_SEC;
+    const bar = el("timer");
+    bar.classList.remove("kw-timer-danger");
+    bar.style.transition = "none";
+    bar.style.width = "100%";
+    void bar.offsetWidth;
+    bar.style.transition = `width ${secs}s linear`;
+    bar.style.width = "0%";
+    timerIds = [
+      schedule(
+        () => bar.classList.add("kw-timer-danger"),
+        Math.max(0, secs - TIME_DANGER_SEC) * 1000,
+      ),
+      schedule(onTimeout, secs * 1000),
+    ];
+  };
+
+  const onTimeout = () => {
+    if (resolved) return;
+    resolved = true;
+    clearIdle();
+    el("arrow").textContent = "";
+    sfx.wrong();
+    schedule(() => renderEnd(false), 600);
   };
 
   const renderModes = () => {
@@ -349,18 +392,12 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
     startIdle();
   };
 
+  // A wrong stroke no longer ends the game — it just costs time. The clock
+  // keeps running; we shake and flash the correct direction as a nudge.
   const onStrokeWrong = () => {
     kanjiHadMistake = true;
     sfx.wrong();
     shakeStage();
-    hearts--;
-    renderHud();
-    if (hearts <= 0) {
-      resolved = true;
-      clearIdle();
-      schedule(() => renderEnd(false), 700);
-      return;
-    }
     renderArrow(true); // flash the correct direction in red
     schedule(() => {
       if (!disposed && !resolved) {
@@ -373,6 +410,7 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
 
   const onKanjiDone = () => {
     resolved = true;
+    stopTimer();
     clearIdle();
     el("arrow").textContent = "";
     sfx.done();
@@ -399,6 +437,7 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
     renderStrokeStates();
     renderProgress();
     renderArrow();
+    startTimer();
     startIdle();
   };
 
@@ -445,6 +484,7 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
 
   const renderEnd = (cleared: boolean) => {
     if (cleared) sfx.fanfare();
+    stopTimer();
     clearIdle();
     const score = round;
     host.innerHTML = `
@@ -470,7 +510,6 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
   const restart = () => {
     session = createSession(quiz, (Math.random() * 0x7fffffff) | 0);
     round = 0;
-    hearts = MAX_HEARTS;
     streak = 0;
     startGame();
   };
