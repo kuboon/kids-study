@@ -7,12 +7,25 @@
  */
 
 export type StrokeQuiz = {
-  /** Character shown large as the prompt (e.g. "大", later "ア" / "3"). */
+  /** The character to write, shown large in the center (e.g. "大"). */
   label: string;
-  /** 8-direction codes in writing order. See `quantize8` / `DIR_ARROWS`. */
-  strokes: readonly number[];
-  /** Optional per-stroke hint (e.g. KanjiVG kvg:type). Not required to play. */
-  hintTypes?: readonly string[];
+  /**
+   * Optional question text identifying the character *without* being the
+   * character itself — e.g. its reading "おおきい". Shown as the prompt so the
+   * player recalls which kanji to write.
+   */
+  prompt?: string;
+  /**
+   * Strokes in writing order. Each stroke is one or more 8-direction codes
+   * (see `quantize8` / `DIR_ARROWS`) — a bent stroke like ┓ is `[0, 2]` (→↓),
+   * swiped as two flicks. Used to match the player's swipes.
+   */
+  strokes: readonly (readonly number[])[];
+  /**
+   * Optional per-stroke render paths (SVG "d", 109x109 viewBox), aligned with
+   * `strokes`. Lets the game draw the character one stroke at a time.
+   */
+  paths?: readonly string[];
 };
 
 export type StrokeQuizGenerator = {
