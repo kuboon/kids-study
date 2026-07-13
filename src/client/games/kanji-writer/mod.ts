@@ -246,10 +246,14 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
   inkMat.disableLighting = true;
 
   // ---- coordinate mapping ----
+  // The camera views the board from its +z side (looking −z), and Babylon is
+  // left-handed, so world +x lands on screen-left — negate x so the kanji
+  // isn't mirrored. y-down (SVG) → y-up (world). Input uses the inverse, so
+  // drawing stays aligned with what's shown.
   const toWorld = (p: P): Vector3 =>
     Vector3.TransformCoordinates(
       new Vector3(
-        (p.x / 109 - 0.5) * BOARD_SIZE,
+        (0.5 - p.x / 109) * BOARD_SIZE,
         (0.5 - p.y / 109) * BOARD_SIZE,
         Z_LIFT,
       ),
@@ -261,7 +265,7 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
       Matrix.Invert(board.getWorldMatrix()),
     );
     return {
-      x: (l.x / BOARD_SIZE + 0.5) * 109,
+      x: (0.5 - l.x / BOARD_SIZE) * 109,
       y: (0.5 - l.y / BOARD_SIZE) * 109,
     };
   };
