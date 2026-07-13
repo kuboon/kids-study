@@ -154,17 +154,19 @@ const makeSampler = () => {
 
 const HUD = `
   <div data-kw="hud" class="absolute inset-0 pointer-events-none flex flex-col">
-    <div class="text-center pt-2 pl-12 pr-3 leading-tight">
-      <div class="text-xs opacity-50">この よみの かんじ</div>
-      <div data-kw="prompt" class="text-2xl font-bold drop-shadow"></div>
+    <div class="flex items-start gap-2 px-3 pt-2 pl-12 bg-base-100/95">
+      <div class="flex-1 text-center leading-tight">
+        <div class="text-xs opacity-60">この よみの かんじ</div>
+        <div data-kw="prompt" class="text-2xl font-bold"></div>
+      </div>
+      <div class="text-right leading-tight">
+        <div data-kw="round" class="text-sm opacity-70 whitespace-nowrap"></div>
+        <div data-kw="score" class="text-lg font-black text-primary whitespace-nowrap"></div>
+        <div data-kw="combo" class="text-sm font-black text-warning whitespace-nowrap"></div>
+      </div>
     </div>
-    <div class="absolute top-2 right-3 text-right leading-tight">
-      <div data-kw="round" class="text-sm opacity-70"></div>
-      <div data-kw="score" class="text-lg font-black text-primary"></div>
-      <div data-kw="combo" class="text-sm font-black text-warning"></div>
-    </div>
-    <div data-kw="fx" class="absolute inset-0 overflow-hidden"></div>
-    <div class="mt-auto text-center pb-2">
+    <div data-kw="fx" class="relative flex-1 min-h-0 overflow-hidden"></div>
+    <div class="text-center pt-1 pb-2 bg-base-100/95">
       <div data-kw="progress" class="text-sm opacity-70"></div>
       <div class="text-xs opacity-40">なぞって かこう！はやいほど たかとくてん</div>
     </div>
@@ -372,17 +374,19 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
   const showScore = (pts: number, comboNow: number) => {
     const g = document.createElement("div");
     const comboLine = pts >= PERFECT && comboNow >= 2
-      ? `<div class="text-xl font-black text-warning">コンボ ${comboNow}!</div>`
+      ? `<div class="text-xl font-black text-amber-300">コンボ ${comboNow}!</div>`
       : "";
+    // Fixed (non-theme) colours: the writing area is always dark, so the popup
+    // must stay bright in both light and dark themes.
     g.className =
       `kw-score absolute left-1/2 top-1/2 text-center whitespace-nowrap ${
         pts >= PERFECT
-          ? "text-success"
+          ? "text-emerald-400"
           : pts >= 3
-          ? "text-info"
+          ? "text-sky-300"
           : pts >= 1
-          ? "text-base-content opacity-80"
-          : "text-error"
+          ? "text-amber-300"
+          : "text-rose-400"
       }`;
     g.innerHTML = `<div class="text-4xl font-black">+${pts}</div>${comboLine}`;
     el("fx").appendChild(g);
