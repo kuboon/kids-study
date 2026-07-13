@@ -1,13 +1,33 @@
 /**
- * Kanji Writer — write a kanji stroke by stroke. Each stroke you draw is
- * scored 0–5 by how well its *shape* (angle & length, not absolute position)
- * matches the real KanjiVG stroke. The prompt is the reading, so you recall
- * which kanji to write. If you draw a stroke before the hint appears (1s idle)
- * it's worth up to 5; after the hint, up to 2. A run of perfect (+5) strokes
- * builds a combo that carries across characters.
+ * Kanji Writer — write a kanji stroke by stroke, in 3D. The kanji floats on a
+ * plane and you draw each stroke either by swiping (pointer ray → plane) on a
+ * flat screen or, in an immersive-vr session, by holding a controller trigger
+ * and writing in the air. Both feed the SAME pipeline: the drawn points land
+ * in the kanji's 109-unit space and are scored by shape (angle & length,
+ * position-independent — `shapeAccuracy`). Before the hint appears a stroke is
+ * worth up to 5, after it up to 2; a run of +5 builds a combo across kanji.
  *
- * Kanji-specific. Stroke data from KanjiVG (CC BY-SA 3.0); see /NOTICE.
+ * One Babylon scene for both modes (Babylon is already bundled for the other
+ * games). Stroke data from KanjiVG (CC BY-SA 3.0); see /NOTICE.
  */
+
+import { Engine } from "@babylonjs/core/Engines/engine.js";
+import { Scene } from "@babylonjs/core/scene.js";
+import { UniversalCamera } from "@babylonjs/core/Cameras/universalCamera.js";
+import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight.js";
+import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector.js";
+import { Color3, Color4 } from "@babylonjs/core/Maths/math.color.js";
+import { Plane } from "@babylonjs/core/Maths/math.plane.js";
+import "@babylonjs/core/Culling/ray.js"; // Ray.intersectsPlane for pointer picking
+import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder.js";
+import type { Mesh } from "@babylonjs/core/Meshes/mesh.js";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode.js";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial.js";
+import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture.js";
+import "@babylonjs/core/Meshes/Builders/planeBuilder.js";
+import "@babylonjs/core/Meshes/Builders/tubeBuilder.js";
+import { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience.js";
+import type { WebXRInputSource } from "@babylonjs/core/XR/webXRInputSource.js";
 
 import { createSession, type Session } from "../../../../quiz/session.ts";
 import {
@@ -20,18 +40,26 @@ import type { StrokeQuiz } from "../../../../quiz/stroke/types.ts";
 import type { StrokeGameModule, StrokeGameMount } from "../stroke_types.ts";
 
 const ROUNDS_TO_CLEAR = 5;
-const MIN_SWIPE = 20; // px; shorter drags are taps and ignored (non-dot)
-const HINT_IDLE_MS = 1000; // reveal the next stroke after this idle time
+const HINT_IDLE_MS = 1200;
+const MIN_SWIPE = 18; // px; shorter flat drags are taps (non-dot)
+const SAMPLE_N = 16;
+const MAX_PTS_PRE_HINT = 5;
+const MAX_PTS_POST_HINT = 2;
+const PERFECT = MAX_PTS_PRE_HINT;
+const DOT_LEN = 14;
+const DOT_TOL = 22;
+const TARGET_POINTS = 40; // per-stroke sampling for smooth 3D tubes
 
-// Scoring (canvas space is 109 units):
-const SAMPLE_N = 16; // points each stroke is resampled to for matching
-const MAX_PTS_PRE_HINT = 5; // best score for a stroke drawn before the hint
-const MAX_PTS_POST_HINT = 2; // best score once the hint is showing
-const PERFECT = MAX_PTS_PRE_HINT; // a +5 stroke keeps a combo alive
-const DOT_LEN = 14; // strokes shorter than this are dots (点)
-const DOT_TOL = 22; // a dot's accuracy falls to 0 this far from its centre
+// The kanji floats on this plane; good for a standing XR user and framed by
+// the flat camera below.
+const BOARD_SIZE = 1.4; // metres, width & height
+const BOARD_POS = new Vector3(0, 1.4, -1.2);
+const BOARD_NORMAL = new Vector3(0, 0, 1);
+const STROKE_RADIUS = 0.012;
+const INK_RADIUS = 0.014;
+const Z_LIFT = 0.02; // strokes sit just in front of the board
 
-// ---- sound: tiny WebAudio blips, no audio files (target-shooter pattern) ---
+// ---- sound: tiny WebAudio blips ---------------------------------------------
 
 const createSfx = () => {
   let ctx: AudioContext | null = null;
@@ -69,7 +97,6 @@ const createSfx = () => {
     osc.stop(t0 + dur);
   };
   return {
-    // Higher score → higher, brighter blip. Combo bumps the pitch further.
     score(pts: number, combo: number) {
       if (pts <= 0) {
         tone(220, 0.2, { type: "sawtooth", slideTo: 90, gain: 0.05 });
@@ -93,45 +120,65 @@ const createSfx = () => {
   };
 };
 
-// ---- styles ----------------------------------------------------------------
+// ---- off-screen SVG sampler (reuse the browser's path math) ----------------
 
-const CSS = `
-.kw-stroke{fill:none;stroke-width:6.5;stroke-linecap:round;stroke-linejoin:round;transition:opacity .2s ease-out}
-.kw-ink{fill:none;stroke:#22c55e;stroke-width:6.5;stroke-linecap:round;stroke-linejoin:round;opacity:.9;pointer-events:none}
-@keyframes kw-pop{0%{transform:scale(.5);opacity:0}60%{transform:scale(1.15);opacity:1}100%{transform:scale(1);opacity:1}}
-.kw-pop{animation:kw-pop .25s ease-out}
-@keyframes kw-score{0%{transform:translate(-50%,-50%) scale(.5);opacity:0}30%{transform:translate(-50%,-50%) scale(1.25);opacity:1}100%{transform:translate(-50%,-150%) scale(1);opacity:0}}
-.kw-score{animation:kw-score .7s ease-out forwards}
-@keyframes kw-combo{0%{transform:scale(1)}50%{transform:scale(1.35)}100%{transform:scale(1)}}
-.kw-combo{animation:kw-combo .3s}
-@keyframes kw-fade{to{opacity:0}}
-`;
+const SVG_NS = "http://www.w3.org/2000/svg";
+const makeSampler = () => {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", "0 0 109 109");
+  svg.setAttribute(
+    "style",
+    "position:absolute;width:0;height:0;overflow:hidden;pointer-events:none",
+  );
+  document.body.appendChild(svg);
+  return {
+    sample(d: string, n: number): { pts: P[]; len: number } {
+      const pe = document.createElementNS(SVG_NS, "path");
+      pe.setAttribute("d", d);
+      svg.appendChild(pe);
+      const len = pe.getTotalLength();
+      const pts = Array.from({ length: n }, (_, i) => {
+        const q = pe.getPointAtLength((len * i) / (n - 1));
+        return { x: q.x, y: q.y };
+      });
+      svg.removeChild(pe);
+      return { pts, len };
+    },
+    dispose() {
+      svg.remove();
+    },
+  };
+};
 
-const SKELETON = `
-  <style>${CSS}</style>
-  <div class="absolute inset-0 flex flex-col bg-base-100 overflow-hidden select-none">
-    <div class="flex items-center gap-2 px-3 pt-2 pl-12">
+// ---- HUD (flat-screen overlay; invisible in immersive XR) ------------------
+
+const HUD = `
+  <div data-kw="hud" class="absolute inset-0 pointer-events-none flex flex-col">
+    <div class="flex items-start gap-2 px-3 pt-2 pl-12 bg-base-100/95">
       <div class="flex-1 text-center leading-tight">
-        <div class="text-xs opacity-50">この よみの かんじ</div>
+        <div class="text-xs opacity-60">この よみの かんじ</div>
         <div data-kw="prompt" class="text-2xl font-bold"></div>
       </div>
-      <div class="flex flex-col items-end leading-tight">
-        <span data-kw="round" class="text-sm opacity-70 whitespace-nowrap"></span>
-        <span data-kw="score" class="text-lg font-black text-primary whitespace-nowrap"></span>
-        <span data-kw="combo" class="text-sm font-black text-warning whitespace-nowrap"></span>
+      <div class="text-right leading-tight">
+        <div data-kw="round" class="text-sm opacity-70 whitespace-nowrap"></div>
+        <div data-kw="score" class="text-lg font-black text-primary whitespace-nowrap"></div>
+        <div data-kw="combo" class="text-sm font-black text-warning whitespace-nowrap"></div>
       </div>
     </div>
-    <div data-kw="stage" class="relative flex-1 min-h-0 flex items-center justify-center m-2 rounded-box bg-base-200 text-base-content" style="touch-action:none">
-      <div data-kw="fx" class="absolute inset-0 pointer-events-none overflow-hidden"></div>
-    </div>
-    <div class="flex flex-col items-center gap-0.5 pb-2">
+    <div data-kw="fx" class="relative flex-1 min-h-0 overflow-hidden"></div>
+    <div class="text-center pt-1 pb-2 bg-base-100/95">
       <div data-kw="progress" class="text-sm opacity-70"></div>
-      <div class="text-xs opacity-40">おぼえて かこう！はやいほど たかとくてん</div>
+      <div class="text-xs opacity-40">なぞって かこう！はやいほど たかとくてん</div>
     </div>
   </div>
 `;
 
-const SVG_NS = "http://www.w3.org/2000/svg";
+const CSS = `
+@keyframes kw-score{0%{transform:translate(-50%,-50%) scale(.5);opacity:0}30%{transform:translate(-50%,-50%) scale(1.25);opacity:1}100%{transform:translate(-50%,-160%) scale(1);opacity:0}}
+.kw-score{animation:kw-score .7s ease-out forwards}
+@keyframes kw-combo{0%{transform:scale(1)}50%{transform:scale(1.35)}100%{transform:scale(1)}}
+.kw-combo{animation:kw-combo .3s}
+`;
 
 // ---- game ------------------------------------------------------------------
 
@@ -140,13 +187,17 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
   if (!prevPosition) container.style.position = "relative";
 
   const host = document.createElement("div");
-  host.className = "absolute inset-0";
+  host.className = "absolute inset-0 bg-base-100 overflow-hidden select-none";
+  host.innerHTML =
+    `<style>${CSS}</style><canvas data-kw="canvas" class="absolute inset-0 w-full h-full block" style="touch-action:none;outline:none"></canvas>${HUD}`;
   container.appendChild(host);
 
   const el = <T extends HTMLElement = HTMLElement>(k: string): T =>
     host.querySelector(`[data-kw="${k}"]`) as T;
+  const canvas = el<HTMLCanvasElement>("canvas");
 
   const sfx = createSfx();
+  const sampler = makeSampler();
 
   let disposed = false;
   const timers = new Set<ReturnType<typeof setTimeout>>();
@@ -163,30 +214,150 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
     timers.delete(id);
   };
 
-  let session: Session<StrokeQuiz> = createSession(
+  // ---- Babylon scene ----
+  const engine = new Engine(canvas, true, { stencil: true });
+  const scene = new Scene(engine);
+  scene.clearColor = new Color4(0.06, 0.07, 0.11, 1);
+  const camera = new UniversalCamera("cam", new Vector3(0, 1.4, 1.9), scene);
+  camera.setTarget(BOARD_POS);
+  camera.fov = 0.55; // pulled back + narrower → flatter, head-on framing
+  camera.inputs.clear();
+  const hemi = new HemisphericLight("h", new Vector3(0, 1, 0), scene);
+  hemi.intensity = 1;
+
+  const board = new TransformNode("board", scene);
+  board.position.copyFrom(BOARD_POS);
+  const boardPlane = Plane.FromPositionAndNormal(BOARD_POS, BOARD_NORMAL);
+
+  const frame = MeshBuilder.CreatePlane("frame", { size: BOARD_SIZE }, scene);
+  frame.parent = board;
+  const frameMat = new StandardMaterial("frameMat", scene);
+  frameMat.diffuseColor = new Color3(0.12, 0.14, 0.2);
+  frameMat.emissiveColor = new Color3(0.05, 0.06, 0.1);
+  frameMat.backFaceCulling = false;
+  frame.material = frameMat;
+
+  const strokeMat = new StandardMaterial("s", scene);
+  strokeMat.emissiveColor = new Color3(0.5, 0.75, 1);
+  strokeMat.disableLighting = true;
+  const doneMat = new StandardMaterial("d", scene);
+  doneMat.emissiveColor = new Color3(0.13, 0.83, 0.42);
+  doneMat.disableLighting = true;
+  const inkMat = new StandardMaterial("i", scene);
+  inkMat.emissiveColor = new Color3(1, 0.85, 0.2);
+  inkMat.disableLighting = true;
+
+  // ---- coordinate mapping ----
+  // The camera views the board from its +z side (looking −z), and Babylon is
+  // left-handed, so world +x lands on screen-left — negate x so the kanji
+  // isn't mirrored. y-down (SVG) → y-up (world). Input uses the inverse, so
+  // drawing stays aligned with what's shown.
+  const toWorld = (p: P): Vector3 =>
+    Vector3.TransformCoordinates(
+      new Vector3(
+        (0.5 - p.x / 109) * BOARD_SIZE,
+        (0.5 - p.y / 109) * BOARD_SIZE,
+        Z_LIFT,
+      ),
+      board.getWorldMatrix(),
+    );
+  const toKanji = (world: Vector3): P => {
+    const l = Vector3.TransformCoordinates(
+      world,
+      Matrix.Invert(board.getWorldMatrix()),
+    );
+    return {
+      x: (0.5 - l.x / BOARD_SIZE) * 109,
+      y: (0.5 - l.y / BOARD_SIZE) * 109,
+    };
+  };
+
+  // Debug/test hook: map a kanji 109-space point to client (screen) pixels —
+  // handy for checking flat/XR alignment and to drive automated tests.
+  (canvas as unknown as { __project?: (p: P) => { x: number; y: number } })
+    .__project = (p) => {
+      const v = Vector3.Project(
+        toWorld(p),
+        Matrix.Identity(),
+        scene.getTransformMatrix(),
+        camera.viewport.toGlobal(
+          engine.getRenderWidth(),
+          engine.getRenderHeight(),
+        ),
+      );
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: rect.left + (v.x / engine.getRenderWidth()) * rect.width,
+        y: rect.top + (v.y / engine.getRenderHeight()) * rect.height,
+      };
+    };
+  // Debug/test hook: the current kanji's target strokes (109-space points).
+  (canvas as unknown as { __targets?: () => P[][] }).__targets = () => targets;
+
+  // ---- 3D prompt/score panel (for XR; the DOM HUD covers flat mode) ----
+  const panel = MeshBuilder.CreatePlane("panel", {
+    width: BOARD_SIZE,
+    height: 0.32,
+  }, scene);
+  panel.parent = board;
+  panel.position.y = BOARD_SIZE / 2 + 0.24;
+  const panelTex = new DynamicTexture(
+    "pt",
+    { width: 1024, height: 256 },
+    scene,
+  );
+  const panelMat = new StandardMaterial("pm", scene);
+  panelMat.diffuseTexture = panelTex;
+  panelMat.emissiveColor = new Color3(1, 1, 1);
+  panelMat.disableLighting = true;
+  panel.material = panelMat;
+  const drawPanel = (a: string, b: string) => {
+    const ctx = panelTex.getContext() as CanvasRenderingContext2D;
+    ctx.clearRect(0, 0, 1024, 256);
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#e8eefc";
+    ctx.font = "bold 92px sans-serif";
+    ctx.fillText(a, 512, 108);
+    ctx.font = "48px sans-serif";
+    ctx.fillStyle = "#9fb3d8";
+    ctx.fillText(b, 512, 188);
+    panelTex.update();
+  };
+
+  // ---- game state ----
+  const session: Session<StrokeQuiz> = createSession(
     quiz,
     (Math.random() * 0x7fffffff) | 0,
   );
-  let paths: readonly string[] = [];
-  let strokeIndex = 0;
   let round = 0;
   let score = 0;
   let combo = 0;
-  let resolved = false;
-
-  let stageEl!: HTMLDivElement;
-  let svgEl: SVGSVGElement | null = null;
-  let pathEls: SVGPathElement[] = [];
-  let dragStart: P | null = null;
-  let points: P[] = [];
-  let idleTimer: ReturnType<typeof setTimeout> | null = null;
+  let strokeIndex = 0;
+  let targets: P[][] = [];
+  let targetLens: number[] = [];
+  let strokeMeshes: Mesh[] = [];
   let hintRevealed = false;
+  let resolved = false;
+  let idleId: ReturnType<typeof setTimeout> | null = null;
 
-  // ---- HUD ----
+  const clearIdle = () => {
+    if (idleId !== null) unschedule(idleId);
+    idleId = null;
+  };
+  const startIdle = () => {
+    clearIdle();
+    if (resolved) return;
+    idleId = schedule(() => {
+      idleId = null;
+      hintRevealed = true;
+      renderStrokes();
+    }, HINT_IDLE_MS);
+  };
 
+  // ---- HUD / panel rendering ----
   const renderHud = () => {
-    el("round").textContent = `${round} / ${ROUNDS_TO_CLEAR}`;
     el("score").textContent = `スコア ${score}`;
+    el("round").textContent = `${round} / ${ROUNDS_TO_CLEAR}`;
     const c = el("combo");
     c.textContent = combo >= 2 ? `🔥コンボ ${combo}` : "";
     if (combo >= 2) {
@@ -194,168 +365,151 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
       void c.offsetWidth;
       c.classList.add("kw-combo");
     }
-  };
-
-  const renderProgress = () => {
-    el("progress").textContent = `${paths.length}画中 ${
-      Math.min(strokeIndex + 1, paths.length)
+    el("progress").textContent = `${targets.length}画中 ${
+      Math.min(strokeIndex + 1, targets.length)
     }画目`;
+    drawPanel(el("prompt").textContent || "", `スコア ${score}`);
   };
-
-  // ---- center kanji (KanjiVG strokes) ----
-
-  const buildSvg = () => {
-    const fx = el("fx");
-    stageEl.innerHTML = "";
-    stageEl.appendChild(fx);
-    const svg = document.createElementNS(SVG_NS, "svg");
-    svg.setAttribute("viewBox", "0 0 109 109");
-    svg.setAttribute("class", "w-full h-full pointer-events-none");
-    pathEls = paths.map((d) => {
-      const p = document.createElementNS(SVG_NS, "path");
-      p.setAttribute("d", d);
-      p.setAttribute("class", "kw-stroke stroke-primary");
-      p.style.opacity = "0";
-      svg.appendChild(p);
-      return p;
-    });
-    stageEl.insertBefore(svg, fx);
-    svgEl = svg;
-  };
-
-  // Done strokes solid; the current shows only once the hint is revealed.
-  const renderStrokeStates = () => {
-    pathEls.forEach((p, i) => {
-      p.style.opacity = i < strokeIndex
-        ? "1"
-        : i === strokeIndex && hintRevealed
-        ? "0.3"
-        : "0";
-    });
-  };
-
-  const popStrokeDone = () => {
-    const p = pathEls[strokeIndex];
-    if (!p) return;
-    p.classList.remove("kw-pop");
-    void p.getBoundingClientRect();
-    p.classList.add("kw-pop");
-  };
-
-  // ---- coordinate mapping & stroke sampling ----
-
-  // screen (client) point → SVG user units (0..109), via the SVG's CTM.
-  const toUser = (sx: number, sy: number): P => {
-    const ctm = svgEl?.getScreenCTM();
-    if (!ctm) return { x: sx, y: sy };
-    const pt = new DOMPoint(sx, sy).matrixTransform(ctm.inverse());
-    return { x: pt.x, y: pt.y };
-  };
-
-  const sampleTarget = (pathEl: SVGPathElement, n: number): P[] => {
-    const len = pathEl.getTotalLength();
-    return Array.from({ length: n }, (_, i) => {
-      const pt = pathEl.getPointAtLength((len * i) / (n - 1));
-      return { x: pt.x, y: pt.y };
-    });
-  };
-
-  // ---- idle hint timer ----
-
-  const clearIdle = () => {
-    if (idleTimer !== null) {
-      unschedule(idleTimer);
-      idleTimer = null;
-    }
-  };
-
-  const startIdle = () => {
-    clearIdle();
-    if (resolved) return;
-    idleTimer = schedule(() => {
-      idleTimer = null;
-      hintRevealed = true;
-      renderStrokeStates();
-    }, HINT_IDLE_MS);
-  };
-
-  // ---- feedback ----
 
   const showScore = (pts: number, comboNow: number) => {
     const g = document.createElement("div");
     const comboLine = pts >= PERFECT && comboNow >= 2
-      ? `<div class="text-xl font-black text-warning">コンボ ${comboNow}!</div>`
+      ? `<div class="text-xl font-black text-amber-300">コンボ ${comboNow}!</div>`
       : "";
+    // Fixed (non-theme) colours: the writing area is always dark, so the popup
+    // must stay bright in both light and dark themes.
     g.className =
       `kw-score absolute left-1/2 top-1/2 text-center whitespace-nowrap ${
         pts >= PERFECT
-          ? "text-success"
+          ? "text-emerald-400"
           : pts >= 3
-          ? "text-info"
+          ? "text-sky-300"
           : pts >= 1
-          ? "text-base-content opacity-70"
-          : "text-error"
+          ? "text-amber-300"
+          : "text-rose-400"
       }`;
     g.innerHTML = `<div class="text-4xl font-black">+${pts}</div>${comboLine}`;
     el("fx").appendChild(g);
     schedule(() => g.remove(), 700);
+    drawPanel(
+      comboNow >= 2 && pts >= PERFECT ? `+${pts} 🔥${comboNow}` : `+${pts}`,
+      `スコア ${score}`,
+    );
   };
 
-  // Draw the player's raw ink briefly, so a swipe is visible.
-  const showInk = () => {
-    if (!svgEl || points.length < 2) return;
-    const d = points.map((p, i) => {
-      const u = toUser(p.x, p.y);
-      return `${i === 0 ? "M" : "L"}${u.x.toFixed(1)},${u.y.toFixed(1)}`;
-    }).join(" ");
-    const ink = document.createElementNS(SVG_NS, "path");
-    ink.setAttribute("d", d);
-    ink.setAttribute("class", "kw-ink kw-fade");
-    ink.style.animation = "kw-fade .4s ease-out .2s forwards";
-    svgEl.appendChild(ink);
-    schedule(() => ink.remove(), 650);
+  const disposeStrokes = () => {
+    for (const m of strokeMeshes) m.dispose();
+    strokeMeshes = [];
+  };
+  const renderStrokes = () => {
+    strokeMeshes.forEach((m, i) => {
+      const on = i < strokeIndex || (i === strokeIndex && hintRevealed);
+      m.setEnabled(on);
+      m.material = i < strokeIndex ? doneMat : strokeMat;
+      m.visibility = i < strokeIndex ? 1 : 0.4;
+    });
   };
 
-  // ---- scoring ----
+  const loadKanji = () => {
+    disposeStrokes();
+    const q = session.next();
+    const paths = q.paths ?? [];
+    targets = [];
+    targetLens = [];
+    strokeMeshes = paths.map((d) => {
+      const smooth = sampler.sample(d, TARGET_POINTS);
+      targets.push(sampler.sample(d, SAMPLE_N).pts);
+      targetLens.push(smooth.len);
+      const tube = MeshBuilder.CreateTube("t", {
+        path: smooth.pts.map(toWorld),
+        radius: STROKE_RADIUS,
+        tessellation: 6,
+        cap: 2,
+      }, scene);
+      tube.material = strokeMat;
+      return tube;
+    });
+    strokeIndex = 0;
+    hintRevealed = false;
+    resolved = false;
+    el("prompt").textContent = q.prompt ?? q.label;
+    renderHud();
+    renderStrokes();
+    startIdle();
+  };
 
-  // Accuracy [0,1] of the drawn stroke against the current target's shape.
-  const strokeAccuracy = (): number => {
-    const targetEl = pathEls[strokeIndex];
-    if (!targetEl) return 0;
-    const drawnUser = points.map((p) => toUser(p.x, p.y));
-    const tLen = targetEl.getTotalLength();
-    if (tLen < DOT_LEN) {
-      const mid = sampleTarget(targetEl, 3)[1];
-      const d = Math.min(
-        pointDistance(drawnUser[drawnUser.length - 1], mid),
-        pointDistance(centroid(drawnUser), mid),
-      );
-      return Math.max(0, 1 - d / DOT_TOL);
+  // ---- drawing pipeline (shared by pointer & XR) ----
+  let drawing = false;
+  let raw: P[] = [];
+  let inkWorld: Vector3[] = [];
+  let inkMesh: Mesh | null = null;
+
+  const clearInk = () => {
+    inkMesh?.dispose();
+    inkMesh = null;
+    inkWorld = [];
+    raw = [];
+  };
+  const beginStroke = () => {
+    if (resolved || drawing) return;
+    drawing = true;
+    clearIdle();
+    raw = [];
+    inkWorld = [];
+  };
+  const addPoint = (world: Vector3) => {
+    if (!drawing) return;
+    raw.push(toKanji(world));
+    inkWorld.push(world.clone());
+    if (inkWorld.length >= 2) {
+      inkMesh?.dispose();
+      inkMesh = MeshBuilder.CreateTube("ink", {
+        path: inkWorld,
+        radius: INK_RADIUS,
+        tessellation: 6,
+        cap: 2,
+      }, scene);
+      inkMesh.material = inkMat;
     }
-    return shapeAccuracy(drawnUser, sampleTarget(targetEl, SAMPLE_N), SAMPLE_N);
+  };
+  const endStroke = () => {
+    if (!drawing) return;
+    drawing = false;
+    if (resolved || raw.length < 2) {
+      clearInk();
+      startIdle();
+      return;
+    }
+    scoreStroke();
+    clearInk();
   };
 
-  const onStrokeDrawn = () => {
-    const acc = strokeAccuracy();
-    const maxPts = hintRevealed ? MAX_PTS_POST_HINT : MAX_PTS_PRE_HINT;
-    const pts = Math.round(acc * maxPts);
-
+  const scoreStroke = () => {
+    const target = targets[strokeIndex];
+    let acc: number;
+    if (targetLens[strokeIndex] < DOT_LEN) {
+      const mid = target[Math.floor(target.length / 2)];
+      const d = Math.min(
+        pointDistance(raw[raw.length - 1], mid),
+        pointDistance(centroid(raw), mid),
+      );
+      acc = Math.max(0, 1 - d / DOT_TOL);
+    } else {
+      acc = shapeAccuracy(raw, target, SAMPLE_N);
+    }
+    const pts = Math.round(
+      acc * (hintRevealed ? MAX_PTS_POST_HINT : MAX_PTS_PRE_HINT),
+    );
     score += pts;
     combo = pts >= PERFECT ? combo + 1 : 0;
     sfx.score(pts, combo);
-    showScore(pts, combo);
-    renderHud();
-
     hintRevealed = false;
-    popStrokeDone();
     strokeIndex++;
-    renderStrokeStates();
-    renderProgress();
-    if (strokeIndex >= paths.length) {
-      onKanjiDone();
-      return;
-    }
-    startIdle();
+    renderStrokes();
+    renderHud();
+    showScore(pts, combo);
+    if (strokeIndex >= targets.length) onKanjiDone();
+    else startIdle();
   };
 
   const onKanjiDone = () => {
@@ -365,113 +519,152 @@ export const mount: StrokeGameMount = (container, { quiz, onComplete }) => {
     round++;
     renderHud();
     schedule(() => {
-      if (round >= ROUNDS_TO_CLEAR) renderEnd();
-      else nextKanji();
+      if (round >= ROUNDS_TO_CLEAR) finish();
+      else loadKanji();
     }, 800);
   };
 
-  const nextKanji = () => {
-    resolved = false;
-    hintRevealed = false;
-    const q = session.next();
-    paths = q.paths ?? [];
-    strokeIndex = 0;
-    el("prompt").textContent = q.prompt ?? q.label;
-    buildSvg();
-    renderStrokeStates();
-    renderProgress();
-    startIdle();
-  };
-
-  // ---- pointer ----
-
-  const onPointerDown = (e: PointerEvent) => {
-    if (resolved) return;
-    dragStart = { x: e.clientX, y: e.clientY };
-    points = [dragStart];
-    stageEl.setPointerCapture(e.pointerId);
-    clearIdle();
-  };
-
-  const onPointerMove = (e: PointerEvent) => {
-    if (!dragStart) return;
-    const last = points[points.length - 1];
-    if (Math.hypot(e.clientX - last.x, e.clientY - last.y) >= 2) {
-      points.push({ x: e.clientX, y: e.clientY });
-    }
-  };
-
-  const onPointerUp = (e: PointerEvent) => {
-    if (!dragStart) return;
-    const start = dragStart;
-    dragStart = null;
-    if (resolved) return;
-    points.push({ x: e.clientX, y: e.clientY });
-    const net = Math.hypot(e.clientX - start.x, e.clientY - start.y);
-    const targetEl = pathEls[strokeIndex];
-    const isDot = targetEl && targetEl.getTotalLength() < DOT_LEN;
-    if (net < MIN_SWIPE && !isDot) {
-      startIdle(); // a tap on a normal stroke — resume the idle countdown
-      return;
-    }
-    showInk();
-    onStrokeDrawn();
-  };
-
-  // ---- lifecycle ----
-
-  const renderEnd = () => {
+  const finish = () => {
     resolved = true;
     clearIdle();
+    disposeStrokes();
+    clearInk();
     sfx.fanfare();
-    const finalScore = score;
-    host.innerHTML = `
-      <style>${CSS}</style>
-      <div class="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-base-100 p-6 text-center">
-        <div class="text-7xl">🎉</div>
-        <h2 class="text-4xl font-bold">スコア ${finalScore}</h2>
-        <p class="text-lg opacity-70">${ROUNDS_TO_CLEAR}もじ かけたね！</p>
-        <p class="text-xs opacity-60">漢字データ: <a class="link" href="https://kanjivg.tagaini.net" target="_blank" rel="noopener">KanjiVG</a> (CC BY-SA 3.0)</p>
-      </div>
-    `;
+    drawPanel(`スコア ${score}`, `${ROUNDS_TO_CLEAR}もじ かけたね！`);
+    const overlay = document.createElement("div");
+    overlay.className =
+      "absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-base-100/95 text-center p-6";
+    overlay.innerHTML =
+      `<div class="text-7xl">🎉</div><h2 class="text-4xl font-bold">スコア ${score}</h2><p class="text-lg opacity-70">${ROUNDS_TO_CLEAR}もじ かけたね！</p>`;
     const again = document.createElement("button");
     again.type = "button";
     again.className = "btn btn-primary btn-lg";
     again.textContent = "もう一度";
-    again.addEventListener("click", restart);
-    host.lastElementChild!.appendChild(again);
-    onComplete?.({ score: finalScore, cleared: true });
+    again.addEventListener("click", () => {
+      overlay.remove();
+      restart();
+    });
+    overlay.appendChild(again);
+    host.appendChild(overlay);
+    onComplete?.({ score, cleared: true });
   };
 
   const restart = () => {
-    session = createSession(quiz, (Math.random() * 0x7fffffff) | 0);
     round = 0;
     score = 0;
     combo = 0;
-    startGame();
+    loadKanji();
   };
 
-  const startGame = () => {
-    host.innerHTML = SKELETON;
-    stageEl = el<HTMLDivElement>("stage");
-    stageEl.addEventListener("pointerdown", onPointerDown);
-    stageEl.addEventListener("pointermove", onPointerMove);
-    stageEl.addEventListener("pointerup", onPointerUp);
-    stageEl.addEventListener("pointercancel", () => {
-      dragStart = null;
+  // ---- flat-screen input: pointer ray → board plane ----
+  let xrActive = false;
+  let flatDown: { x: number; y: number } | null = null;
+
+  const pickBoard = (offsetX: number, offsetY: number): Vector3 | null => {
+    const ray = scene.createPickingRay(
+      offsetX,
+      offsetY,
+      Matrix.Identity(),
+      camera,
+    );
+    const d = ray.intersectsPlane(boardPlane);
+    if (d === null) return null;
+    return ray.origin.add(ray.direction.scale(d));
+  };
+
+  const onPointerDown = (e: PointerEvent) => {
+    if (xrActive || resolved) return;
+    flatDown = { x: e.clientX, y: e.clientY };
+    canvas.setPointerCapture(e.pointerId);
+    const w = pickBoard(e.offsetX, e.offsetY);
+    if (w) {
+      beginStroke();
+      addPoint(w);
+    }
+  };
+  const onPointerMove = (e: PointerEvent) => {
+    if (xrActive || !drawing) return;
+    const w = pickBoard(e.offsetX, e.offsetY);
+    if (w) addPoint(w);
+  };
+  const onPointerUp = (e: PointerEvent) => {
+    if (xrActive || !flatDown) return;
+    const net = Math.hypot(e.clientX - flatDown.x, e.clientY - flatDown.y);
+    flatDown = null;
+    const isDot = targetLens[strokeIndex] !== undefined &&
+      targetLens[strokeIndex] < DOT_LEN;
+    if (net < MIN_SWIPE && !isDot && drawing) {
+      // a tap on a normal stroke — cancel, resume the hint countdown
+      drawing = false;
+      clearInk();
       startIdle();
+      return;
+    }
+    endStroke();
+  };
+  canvas.addEventListener("pointerdown", onPointerDown);
+  canvas.addEventListener("pointermove", onPointerMove);
+  canvas.addEventListener("pointerup", onPointerUp);
+  canvas.addEventListener("pointercancel", onPointerUp);
+
+  // ---- XR input: controller trigger + position ----
+  let xrDrawer: WebXRInputSource | null = null;
+  const initXR = async () => {
+    const nav = navigator as { xr?: XRSystem };
+    if (!nav.xr?.isSessionSupported) return;
+    let supported = false;
+    try {
+      supported = await nav.xr.isSessionSupported("immersive-vr");
+    } catch { /* ignore */ }
+    if (!supported || disposed) return;
+
+    const xr = await WebXRDefaultExperience.CreateAsync(scene, {
+      disableTeleportation: true,
     });
-    renderHud();
-    nextKanji();
+    if (disposed) return;
+    xr.baseExperience.onStateChangedObservable.add((s) => {
+      xrActive = s === 2; // WebXRState.IN_XR
+    });
+    const bind = (src: WebXRInputSource) => {
+      src.onMotionControllerInitObservable.add((mc) => {
+        const trig = mc.getComponentOfType("trigger") ??
+          mc.getComponent("xr-standard-trigger");
+        trig?.onButtonStateChangedObservable.add(() => {
+          if (!trig.changes.pressed) return;
+          if (trig.pressed) {
+            xrDrawer = src;
+            beginStroke();
+          } else if (xrDrawer === src) {
+            xrDrawer = null;
+            endStroke();
+          }
+        });
+      });
+    };
+    xr.input.controllers.forEach(bind);
+    xr.input.onControllerAddedObservable.add(bind);
   };
 
-  startGame();
+  scene.onBeforeRenderObservable.add(() => {
+    if (xrDrawer && drawing) addPoint(xrDrawer.pointer.position);
+  });
+
+  // ---- boot ----
+  engine.runRenderLoop(() => scene.render());
+  const onResize = () => engine.resize();
+  globalThis.addEventListener("resize", onResize);
+  loadKanji();
+  initXR();
 
   return () => {
     disposed = true;
     for (const id of timers) clearTimeout(id);
     timers.clear();
+    globalThis.removeEventListener("resize", onResize);
+    scene.dispose();
+    engine.dispose();
     sfx.dispose();
+    sampler.dispose();
     host.remove();
     if (!prevPosition) container.style.position = prevPosition;
   };
