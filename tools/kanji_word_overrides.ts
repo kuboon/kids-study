@@ -169,6 +169,6 @@ export const OVERRIDES: Record<string, WriteWord> = {
   "幼": { kanji: "幼", read: "おさな", post: "い" },
   "欲": { kanji: "欲", read: "ほ", post: "しい" },
   // 都道府県漢字のうち、データセットの第一読みが obscure なものを補正。
-  "奈": { kanji: "奈", read: "な" }, // 奈良（いかん/からなし は難しい）
-  "埼": { kanji: "埼", read: "さい" }, // 埼玉（崎 と読みが被らないように）
+  "奈": { kanji: "奈", read: "な", post: "良県" },
+  "埼": { kanji: "埼", read: "さい", post: "玉県" },
 };
