@@ -67,9 +67,18 @@ deno task check    # check + lint + fmt
 - `quiz/stroke/kanji_strokes.ts` —
   **自動生成**（`tools/gen_kanji_strokes.ts`）。 KanjiVG
   由来のストロークデータで、CC BY-SA 3.0（`/NOTICE` 参照）。編集しない
+- `quiz/stroke/word_types.ts` — 出題語 `WriteWord`（漢字＋読みを `[]` で囲む
+  表示）と `displayWord()`
+- `quiz/stroke/words.ts` —
+  **自動生成**（`tools/gen_kanji_words.ts`）。学年別漢字
+  配当表の全漢字（1〜6年・約1026字）を学年ごとに収録。編集しない
 - `quiz/stroke/mod.ts` — stroke 系 `StrokeQuizGenerator` を flat 集約
-- データ再生成:
-  `deno task gen:strokes`（ローカルで1回、要ネット。成果物をコミット）
+- データ再生成（ローカルで1回・要ネット、成果物をコミット）:
+  - `deno task gen:words` — 漢字データセットから `words.ts` を生成。出題の
+    読みは自動選定し、`tools/kanji_word_overrides.ts` で個別に上書き（同音異字の
+    曖昧さは全字カバーのため許容）
+  - `deno task gen:strokes` — `words.ts` の全漢字について KanjiVG から
+    `kanji_paths.ts` を生成
 
 ストローク系ゲームは `src/client/games/stroke_types.ts` の `StrokeGameMount` を
 実装し、`menu.tsx` は `isStroke()` でクイズ一覧と mount
