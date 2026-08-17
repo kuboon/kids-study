@@ -1,4 +1,4 @@
-import { type Handle, RemixNode } from "@remix-run/ui";
+import { type Handle, type RemixNode } from "@remix-run/ui";
 import { routes } from "./routes.ts";
 
 const THEMES = [
@@ -13,8 +13,8 @@ const THEMES = [
   { value: "lofi", label: "Lo-Fi" },
 ] as const;
 
-export function Document(_handle: Handle) {
-  return ({ children }: { children?: RemixNode }) => (
+export function Document(handle: Handle<{ children?: RemixNode }>) {
+  return () => (
     <html lang="ja">
       <head>
         <meta charset="UTF-8" />
@@ -72,7 +72,7 @@ export function Document(_handle: Handle) {
             </div>
           </nav>
         </header>
-        {children}
+        {handle.props.children}
       </body>
     </html>
   );

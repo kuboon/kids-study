@@ -20,7 +20,7 @@
     "npm:@jridgewell/remapping@^2.3.5": "2.3.5",
     "npm:@remix-run/fetch-router@0.18.2": "0.18.2",
     "npm:@remix-run/html-template@0.3.0": "0.3.0",
-    "npm:@remix-run/ui@~0.1.2": "0.1.2",
+    "npm:@remix-run/ui@0.5": "0.5.0",
     "npm:@tailwindcss/oxide@^4.3.3": "4.3.3",
     "npm:daisyui@^5.7.17": "5.7.17",
     "npm:lightningcss@^1.33.0": "1.33.0",
@@ -143,8 +143,8 @@
     "@remix-run/route-pattern@0.20.1": {
       "integrity": "sha512-SSwyX3hX/xZck5UXy0bN4ubsnRJeuEKqHjz4Cc3so32FECexdNk0Y+pg2YZNu7FLGpjBn5dBUQCOtjIXQQudUw=="
     },
-    "@remix-run/ui@0.1.2": {
-      "integrity": "sha512-k7olhXoiLAOu4mqTiyM+oBPuCmVU2qsY9kO6oxLvS3nrcURKxHkmNVw2i/MPJ1/G2nm1dKJfqcoMXU04wu1Fbw==",
+    "@remix-run/ui@0.5.0": {
+      "integrity": "sha512-Cc8GZcXMp/E/3xy6yUTPqCOgVo34GH9OHMM4mdx4RMadCK7C/XzAOJHqLWX1d+yEMl0d1YUK0WV3ZyzFVTOC/w==",
       "dependencies": [
         "@types/dom-navigation"
       ]
@@ -341,7 +341,7 @@
       "src/builder": {
         "dependencies": [
           "jsr:@kuboon/tailwindcss-deno@~0.1.6",
-          "npm:@remix-run/ui@~0.1.2",
+          "npm:@remix-run/ui@0.5",
           "npm:@tailwindcss/oxide@^4.3.3"
         ]
       },
@@ -349,7 +349,7 @@
         "dependencies": [
           "npm:@babylonjs/core@^7.54.3",
           "npm:@remix-run/fetch-router@0.18.2",
-          "npm:@remix-run/ui@~0.1.2"
+          "npm:@remix-run/ui@0.5"
         ]
       },
       "src/ssg": {
@@ -357,7 +357,7 @@
           "jsr:@std/assert@^1.0.19",
           "npm:@remix-run/fetch-router@0.18.2",
           "npm:@remix-run/html-template@0.3.0",
-          "npm:@remix-run/ui@~0.1.2"
+          "npm:@remix-run/ui@0.5"
         ]
       },
       "tools": {
