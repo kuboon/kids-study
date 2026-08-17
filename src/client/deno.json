@@ -5,8 +5,8 @@
     "jsxImportSource": "@remix-run/ui"
   },
   "imports": {
-    "@remix-run/ui": "npm:@remix-run/ui@^0.1.1",
+    "@remix-run/ui": "npm:@remix-run/ui@^0.5.0",
     "@remix-run/fetch-router": "npm:@remix-run/fetch-router@0.18.2",
-    "@babylonjs/core": "npm:@babylonjs/core@^7"
+    "@babylonjs/core": "npm:@babylonjs/core@^7.54.3"
   }
 }
