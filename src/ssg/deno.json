@@ -11,7 +11,7 @@
     "@std/assert": "jsr:@std/assert@^1.0.19",
     "@remix-run/fetch-router": "npm:@remix-run/fetch-router@0.18.2",
     "@remix-run/html-template": "npm:@remix-run/html-template@0.3.0",
-    "@remix-run/ui": "npm:@remix-run/ui@^0.1.1"
+    "@remix-run/ui": "npm:@remix-run/ui@^0.1.2"
   },
   "permissions": {
     "default": {
