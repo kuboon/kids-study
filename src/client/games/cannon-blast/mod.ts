@@ -14,7 +14,7 @@ import Matter from "matter-js";
 import { createSession, type QuizSession } from "../../../../quiz/session.ts";
 import type { GameModule, GameMount } from "../types.ts";
 
-const { Engine, Bodies, Body, Composite, Events } = Matter;
+const { Engine, Bodies, Body, Composite, Events, Sleeping } = Matter;
 
 const ROUNDS_TO_CLEAR = 8;
 const MAX_HEARTS = 3;
@@ -22,8 +22,14 @@ const MAX_HEARTS = 3;
 const GROUND_H = 46;
 const PLAT_RAISE = 150; // table top sits this far above the ground
 const PLAT_H = 16;
-const BLOCK_W = 56;
+const BLOCK_W = 56; // grid pitch; bodies are slightly smaller so they don't touch sideways
 const BLOCK_H = 36;
+const BODY_W = BLOCK_W - 2;
+const BODY_H = BLOCK_H - 2;
+const GEM_R = 12;
+
+const DENSITY_WOOD = 0.002;
+const DENSITY_IRON = 0.008; // wrong answers: heavy enough to clang, light enough not to crush
 
 const MAX_PULL = 150;
 const MIN_PULL = 18;
@@ -313,29 +319,52 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
         PLAT_H,
         { isStatic: true, friction: 0.9, label: "platform" },
       ),
+      // Invisible side walls: debris (and the answer blocks) stay on screen
+      // instead of sailing off where the player can no longer aim at them.
+      Bodies.rectangle(-30, H / 2, 60, H * 3, {
+        isStatic: true,
+        friction: 0.4,
+        label: "wall",
+      }),
+      Bodies.rectangle(W + 30, H / 2, 60, H * 3, {
+        isStatic: true,
+        friction: 0.4,
+        label: "wall",
+      }),
     ]);
   };
 
   // ---- castle ----
 
-  const castleSizeForRound = () => ({
-    cols: Math.min(3 + Math.ceil(round / 3), 5),
-    rows: Math.min(2 + Math.ceil((round + 1) / 2), 6),
-  });
+  const castleSizeForRound = () => {
+    // Never wider than the table: an overhanging column has nothing under it
+    // and would tip the castle over on its own (narrow phone screens especially).
+    const fits = Math.max(
+      2,
+      Math.floor((platRight - platLeft - BODY_W) / BLOCK_W) + 1,
+    );
+    return {
+      cols: Math.min(3 + Math.ceil(round / 3), 5, fits),
+      rows: Math.min(2 + Math.ceil((round + 1) / 2), 6),
+    };
+  };
 
   const buildCastle = (correct: string, wrongs: string[]) => {
     blocks = new Map();
     const { cols, rows } = castleSizeForRound();
     const originX = (platLeft + platRight) / 2 - ((cols - 1) * BLOCK_W) / 2;
 
-    // Cells present in the castle. Bottom rows are full; upper rows may have
-    // gaps so each castle has its own silhouette.
+    // Silhouette by column height, filled bottom-up: every block therefore
+    // rests on the one below (or the table). Punching holes at random instead
+    // would leave floating blocks that drop the moment physics starts and
+    // collapse the castle before the player has taken a shot.
+    const heights = Array.from(
+      { length: cols },
+      () => rows - Math.floor(Math.random() * Math.min(2, rows - 1)),
+    );
     const cells: { c: number; r: number }[] = [];
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        const keep = r < 2 || Math.random() > 0.22;
-        if (keep) cells.push({ c, r });
-      }
+    for (let c = 0; c < cols; c++) {
+      for (let r = 0; r < heights[c]; r++) cells.push({ c, r });
     }
 
     // Pick 4 answer cells, spreading them over distinct columns when we can.
@@ -357,24 +386,29 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
       ...wrongs.map((v) => ({ v, correct: false })),
     ]);
 
-    let topY = platTop;
     for (const { c, r } of cells) {
       const x = originX + c * BLOCK_W;
-      const y = platTop - BLOCK_H / 2 - r * BLOCK_H;
-      topY = Math.min(topY, y - BLOCK_H / 2);
+      // Stack on the body height so blocks start exactly touching: spawning
+      // with gaps makes the whole castle drop and jostle on the first frame.
+      const y = platTop - BODY_H / 2 - r * BODY_H;
       const ai = answerCells.findIndex((a) => a.c === c && a.r === r);
       const isAnswer = ai >= 0 && ai < labels.length;
       const info: BlockInfo = {
-        body: Bodies.rectangle(x, y, BLOCK_W - 2, BLOCK_H - 2, {
+        body: Bodies.rectangle(x, y, BODY_W, BODY_H, {
           friction: 0.6,
           restitution: 0.05,
-          // Wrong answers are secretly solid iron: heavy, hard to topple.
-          density: isAnswer && !labels[ai].correct ? 0.05 : 0.0012,
+          // Wrong answers are secretly iron — heavier, so the ball clangs off.
+          // Only mildly so: the blast moves blocks by setting velocity (which
+          // ignores mass), and a huge mass here would instead crush the wood
+          // underneath and topple the castle on its own.
+          density: isAnswer && !labels[ai].correct
+            ? DENSITY_IRON
+            : DENSITY_WOOD,
           label: isAnswer ? "answer" : "wood",
         }),
         role: isAnswer ? "answer" : "wood",
-        w: BLOCK_W - 2,
-        h: BLOCK_H - 2,
+        w: BODY_W,
+        h: BODY_H,
         ...(isAnswer
           ? { label: labels[ai].v, correct: labels[ai].correct }
           : {}),
@@ -382,21 +416,32 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
       blocks.set(info.body.id, info);
     }
 
-    // The gem rests on top of the castle's center column.
+    // The gem rests on top of the tallest column, so it has real support.
+    let gemCol = 0;
+    for (let c = 1; c < cols; c++) if (heights[c] > heights[gemCol]) gemCol = c;
     const gem: BlockInfo = {
-      body: Bodies.circle((platLeft + platRight) / 2, topY - 14, 12, {
-        friction: 0.4,
-        restitution: 0.2,
-        density: 0.0008,
-        label: "gem",
-      }),
+      body: Bodies.circle(
+        originX + gemCol * BLOCK_W,
+        platTop - heights[gemCol] * BODY_H - GEM_R,
+        GEM_R,
+        {
+          friction: 0.9,
+          restitution: 0,
+          density: DENSITY_WOOD,
+          label: "gem",
+        },
+      ),
       role: "gem",
-      w: 24,
-      h: 24,
+      w: GEM_R * 2,
+      h: GEM_R * 2,
     };
     blocks.set(gem.body.id, gem);
 
     Composite.add(engine.world, [...blocks.values()].map((b) => b.body));
+
+    // Let the stack settle before the player sees it, so any remaining
+    // micro-adjustment happens off-camera rather than as a visible collapse.
+    for (let i = 0; i < 40; i++) Engine.update(engine, PHYS_STEP);
   };
 
   const clearCastle = () => {
@@ -520,12 +565,15 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
       const b = other.body;
       // Wrong answers shed their iron so the whole castle can come down.
       if (other.role === "answer" && !other.correct) {
-        Body.setDensity(b, 0.0012);
+        Body.setDensity(b, DENSITY_WOOD);
       }
       const dx = b.position.x - cx;
       const dy = b.position.y - cy;
       const d = Math.hypot(dx, dy) || 1;
       if (d > R) continue;
+      // A settled castle is asleep, and the engine skips integration for
+      // sleeping bodies — without waking them the blast would do nothing.
+      Sleeping.set(b, false);
       const boost = (1 - d / R) * ballTier.kick;
       Body.setVelocity(b, {
         x: b.velocity.x + (dx / d) * boost,
