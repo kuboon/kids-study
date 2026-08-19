@@ -20,13 +20,19 @@ const ROUNDS_TO_CLEAR = 8;
 const MAX_HEARTS = 3;
 
 const GROUND_H = 46;
-const PLAT_RAISE = 150; // table top sits this far above the ground
+const PLAT_RAISE = 74; // table top sits this far above the ground: low, so a flat shot reaches the tower
 const PLAT_H = 16;
-const BLOCK_W = 56; // grid pitch; bodies are slightly smaller so they don't touch sideways
+const BLOCK_W = 72; // brick width — wide enough that a tall tower isn't top-heavy
 const BLOCK_H = 36;
 const BODY_W = BLOCK_W - 2;
 const BODY_H = BLOCK_H - 2;
 const GEM_R = 12;
+const HUD_CLEARANCE = 96; // keep the tower's top clear of the HUD bar
+
+// The castle is a single tall tower, so every block is reachable by picking the
+// right elevation and knocking out a low block brings the whole stack down.
+const TOWER_ROWS_MIN = 7;
+const TOWER_ROWS_MAX = 13;
 
 const DENSITY_WOOD = 0.002;
 const DENSITY_IRON = 0.008; // wrong answers: heavy enough to clang, light enough not to crush
@@ -40,8 +46,9 @@ const PHYS_STEP = 1000 / 60;
 const G_STEP = 1 * 0.001 * (PHYS_STEP * PHYS_STEP);
 
 const BALL_TTL_MS = 2200;
-const SETTLE_MS = 1700;
-const FALL_Y_MARGIN = 50; // below the table top = toppled
+const SETTLE_MS = 2200; // a tall tower takes a while to finish coming down
+const FALL_Y_MARGIN = 30; // below the table top = toppled (the table is low, so keep this short)
+const TOPPLE_DIST = 30; // px moved from its settled spot before a block counts as demolished
 
 const WRONG_MIN_SPEED = 2.5; // gentle rolls onto a wrong block don't count
 const CORRECT_MIN_SPEED = 1.5;
@@ -58,10 +65,13 @@ type BallTier = {
   kick: number;
   fill: string;
 };
+// Reach and kick are generous: the tower is tall and perfectly stacked, so a
+// timid blast just drops it straight down onto the table still standing, which
+// is neither satisfying nor worth any points.
 const BALL_TIERS: readonly BallTier[] = [
-  { r: 11, density: 0.03, blast: 95, kick: 16, fill: "#8d8d99" },
-  { r: 15, density: 0.04, blast: 125, kick: 19, fill: "#4b5563" },
-  { r: 20, density: 0.05, blast: 165, kick: 23, fill: "#f5c518" },
+  { r: 11, density: 0.03, blast: 180, kick: 21, fill: "#8d8d99" },
+  { r: 15, density: 0.04, blast: 230, kick: 25, fill: "#4b5563" },
+  { r: 20, density: 0.05, blast: 300, kick: 30, fill: "#f5c518" },
 ];
 const tierForStreak = (s: number) => (s >= 4 ? 2 : s >= 2 ? 1 : 0);
 
@@ -197,6 +207,8 @@ type BlockInfo = {
   revealed?: boolean; // wrong answer hit once → shown as iron
   counted?: boolean; // already scored as toppled
   removed?: boolean;
+  x0?: number; // resting spot once the tower has settled, for topple detection
+  y0?: number;
 };
 
 type Particle = {
@@ -254,7 +266,14 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
   let W = 0;
   let H = 0;
 
-  const engine = Engine.create({ enableSleeping: true });
+  // A tall one-block-wide tower is a demanding stack: the default solver lets
+  // solver noise accumulate until it leans over on its own. More iterations
+  // keep it upright long enough to fall asleep, after which it is rock steady.
+  const engine = Engine.create({
+    enableSleeping: true,
+    positionIterations: 14,
+    velocityIterations: 10,
+  });
 
   let blocks = new Map<number, BlockInfo>();
   let ball: Matter.Body | null = null;
@@ -298,9 +317,12 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
 
     groundTop = H - GROUND_H;
     platTop = groundTop - PLAT_RAISE;
-    const platW = Math.min(W * 0.56, 430);
-    platRight = W - 14;
-    platLeft = platRight - platW;
+    // A narrow pedestal under the single tower, set back from the cannon so a
+    // shot has room to arc, but not hard against the right edge.
+    const platW = Math.min(Math.max(BLOCK_W * 2.4, 120), W * 0.42);
+    const platCenter = Math.min(W * 0.7, W - platW / 2 - 14);
+    platLeft = platCenter - platW / 2;
+    platRight = platCenter + platW / 2;
     cannonPivot = { x: Math.max(46, W * 0.1), y: groundTop - 20 };
 
     Composite.clear(engine.world, false);
@@ -337,15 +359,15 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
   // ---- castle ----
 
   const castleSizeForRound = () => {
-    // Never wider than the table: an overhanging column has nothing under it
-    // and would tip the castle over on its own (narrow phone screens especially).
-    const fits = Math.max(
-      2,
-      Math.floor((platRight - platLeft - BODY_W) / BLOCK_W) + 1,
+    // One column, growing taller each round — but never so tall that its top
+    // would run under the HUD on a short screen.
+    const fitsHeight = Math.max(
+      4,
+      Math.floor((platTop - HUD_CLEARANCE) / BODY_H),
     );
     return {
-      cols: Math.min(3 + Math.ceil(round / 3), 5, fits),
-      rows: Math.min(2 + Math.ceil((round + 1) / 2), 6),
+      cols: 1,
+      rows: Math.min(TOWER_ROWS_MIN + round, TOWER_ROWS_MAX, fitsHeight),
     };
   };
 
@@ -354,28 +376,31 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     const { cols, rows } = castleSizeForRound();
     const originX = (platLeft + platRight) / 2 - ((cols - 1) * BLOCK_W) / 2;
 
-    // Silhouette by column height, filled bottom-up: every block therefore
-    // rests on the one below (or the table). Punching holes at random instead
-    // would leave floating blocks that drop the moment physics starts and
-    // collapse the castle before the player has taken a shot.
-    const heights = Array.from(
-      { length: cols },
-      () => rows - Math.floor(Math.random() * Math.min(2, rows - 1)),
-    );
+    // Filled bottom-up, so every block rests on the one below (or the table).
+    // Punching holes at random instead would leave floating blocks that drop
+    // the moment physics starts and collapse the tower before the first shot.
+    const heights = Array.from({ length: cols }, () => rows);
     const cells: { c: number; r: number }[] = [];
     for (let c = 0; c < cols; c++) {
       for (let r = 0; r < heights[c]; r++) cells.push({ c, r });
     }
 
-    // Pick 4 answer cells, spreading them over distinct columns when we can.
-    const pool = shuffle(cells);
+    // Spread the 4 answers over the tower's height — one per quarter — so the
+    // player has to pick an elevation rather than hosing one spot, and every
+    // label stays readable instead of clumping.
     const answerCells: { c: number; r: number }[] = [];
-    for (const cell of pool) {
-      if (answerCells.length >= 4) break;
-      if (answerCells.some((a) => a.c === cell.c)) continue;
-      answerCells.push(cell);
+    for (let band = 0; band < 4; band++) {
+      const lo = Math.floor((rows * band) / 4);
+      const hi = Math.max(lo, Math.floor((rows * (band + 1)) / 4) - 1);
+      const choices = cells.filter(
+        (cell) => cell.r >= lo && cell.r <= hi && !answerCells.includes(cell),
+      );
+      if (choices.length) {
+        answerCells.push(choices[Math.floor(Math.random() * choices.length)]);
+      }
     }
-    for (const cell of pool) {
+    // Short towers may not fill four bands; top up from whatever is left.
+    for (const cell of shuffle(cells)) {
       if (answerCells.length >= 4) break;
       if (answerCells.includes(cell)) continue;
       answerCells.push(cell);
@@ -395,8 +420,9 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
       const isAnswer = ai >= 0 && ai < labels.length;
       const info: BlockInfo = {
         body: Bodies.rectangle(x, y, BODY_W, BODY_H, {
-          friction: 0.6,
-          restitution: 0.05,
+          friction: 0.9,
+          frictionStatic: 4, // grips its neighbours so the tower doesn't creep sideways
+          restitution: 0,
           // Wrong answers are secretly iron — heavier, so the ball clangs off.
           // Only mildly so: the blast moves blocks by setting velocity (which
           // ignores mass), and a huge mass here would instead crush the wood
@@ -416,16 +442,20 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
       blocks.set(info.body.id, info);
     }
 
-    // The gem rests on top of the tallest column, so it has real support.
+    // The gem crowns the tallest column. Its body is a flat-bottomed box, not a
+    // ball: a circle on a flat top sits in unstable equilibrium and rolls off
+    // (and nudges the tower) the instant the solver jitters.
     let gemCol = 0;
     for (let c = 1; c < cols; c++) if (heights[c] > heights[gemCol]) gemCol = c;
     const gem: BlockInfo = {
-      body: Bodies.circle(
+      body: Bodies.rectangle(
         originX + gemCol * BLOCK_W,
         platTop - heights[gemCol] * BODY_H - GEM_R,
-        GEM_R,
+        GEM_R * 2,
+        GEM_R * 2,
         {
           friction: 0.9,
+          frictionStatic: 4,
           restitution: 0,
           density: DENSITY_WOOD,
           label: "gem",
@@ -439,9 +469,19 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
 
     Composite.add(engine.world, [...blocks.values()].map((b) => b.body));
 
-    // Let the stack settle before the player sees it, so any remaining
-    // micro-adjustment happens off-camera rather than as a visible collapse.
-    for (let i = 0; i < 40; i++) Engine.update(engine, PHYS_STEP);
+    // Settle the tower off-camera and, crucially, keep stepping until every
+    // block has fallen asleep — a sleeping stack is frozen and cannot drift.
+    // Matter needs ~60 still frames before it sleeps a body, so a short fixed
+    // settle would hand the player a tower that is still quietly leaning.
+    for (let i = 0; i < 400; i++) {
+      Engine.update(engine, PHYS_STEP);
+      if (i > 70 && [...blocks.values()].every((b) => b.body.isSleeping)) break;
+    }
+    // Remember where each block came to rest: scoring compares against this.
+    for (const info of blocks.values()) {
+      info.x0 = info.body.position.x;
+      info.y0 = info.body.position.y;
+    }
   };
 
   const clearCastle = () => {
@@ -567,13 +607,14 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
       if (other.role === "answer" && !other.correct) {
         Body.setDensity(b, DENSITY_WOOD);
       }
+      // Wake every block, not just the ones in blast range: the engine skips
+      // integration for sleeping bodies, so a settled tower would otherwise
+      // hang in mid-air above the hole the blast just punched in it.
+      Sleeping.set(b, false);
       const dx = b.position.x - cx;
       const dy = b.position.y - cy;
       const d = Math.hypot(dx, dy) || 1;
       if (d > R) continue;
-      // A settled castle is asleep, and the engine skips integration for
-      // sleeping bodies — without waking them the blast would do nothing.
-      Sleeping.set(b, false);
       const boost = (1 - d / R) * ballTier.kick;
       Body.setVelocity(b, {
         x: b.velocity.x + (dx / d) * boost,
@@ -594,6 +635,10 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     hearts--;
     session.markWrong();
     sfx.clang();
+    // Wake the stack so the whole tower visibly shudders from the impact.
+    for (const other of blocks.values()) {
+      if (!other.removed) Sleeping.set(other.body, false);
+    }
     shakeT = 0.25;
     const p = info.body.position;
     for (let i = 0; i < 10; i++) {
@@ -640,10 +685,24 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
 
   // ---- scoring / round flow ----
 
+  // A block scores once it has been demolished — shoved well off its resting
+  // spot, tipped over, or knocked off the table. Position alone isn't enough:
+  // the table is deliberately low, so most of a toppled tower lands on top of
+  // it rather than below it, and "fell off the edge" would score almost none
+  // of the collapse the player just caused.
+  const isToppled = (info: BlockInfo): boolean => {
+    const p = info.body.position;
+    if (p.y > platTop + FALL_Y_MARGIN) return true;
+    if (Math.abs(info.body.angle) > 0.5) return true;
+    const dx = p.x - (info.x0 ?? p.x);
+    const dy = p.y - (info.y0 ?? p.y);
+    return Math.hypot(dx, dy) > TOPPLE_DIST;
+  };
+
   const countFallen = () => {
     for (const info of blocks.values()) {
       if (info.removed || info.counted) continue;
-      if (info.body.position.y > platTop + FALL_Y_MARGIN) {
+      if (isToppled(info)) {
         info.counted = true;
         const p = info.body.position;
         if (info.role === "gem") {
