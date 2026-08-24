@@ -27,7 +27,7 @@ const BLOCK_H = 36;
 const BODY_W = BLOCK_W - 2;
 const BODY_H = BLOCK_H - 2;
 const GEM_R = 12;
-const HUD_CLEARANCE = 96; // keep the tower's top clear of the HUD bar
+const HUD_CLEARANCE = 132; // keep the tower's top clear of the two-row HUD
 
 // A tall two-column tower: twice the debris for a meatier collapse, while the
 // answer bricks all sit in the LEFT column so they stay easy to read and to
@@ -181,14 +181,20 @@ const SKELETON = `
   <style>${CSS}</style>
   <div data-cb="field" class="absolute inset-0 overflow-hidden" style="touch-action:none">
     <canvas data-cb="canvas" class="absolute inset-0 w-full h-full"></canvas>
-    <div class="absolute top-2 left-12 right-3 flex items-center gap-3 z-10 pointer-events-none">
-      <span data-cb="hearts" class="text-2xl whitespace-nowrap"></span>
-      <div data-cb="question" class="flex-1 text-center text-2xl font-bold truncate bg-base-100/80 rounded-box px-3 py-1"></div>
-      <div class="flex flex-col items-end bg-base-100/80 rounded-box px-2 py-1">
-        <span data-cb="round" class="text-sm opacity-70 whitespace-nowrap"></span>
-        <span data-cb="score" class="text-lg font-black text-primary whitespace-nowrap"></span>
-        <span data-cb="streak" class="text-xl font-black text-warning"></span>
+    <div class="absolute top-2 left-12 right-3 flex flex-col gap-1 z-10 pointer-events-none">
+      <div class="flex items-start gap-3">
+        <span data-cb="hearts" class="text-2xl whitespace-nowrap"></span>
+        <div class="flex-1"></div>
+        <div class="flex flex-col items-end bg-base-100/80 rounded-box px-2 py-1">
+          <span data-cb="round" class="text-sm opacity-70 whitespace-nowrap"></span>
+          <span data-cb="score" class="text-lg font-black text-primary whitespace-nowrap"></span>
+          <span data-cb="streak" class="text-xl font-black text-warning"></span>
+        </div>
       </div>
+      <!-- The question gets a row of its own: squeezed between the hearts and
+           the score it had to be truncated, and a half-shown question is
+           unanswerable. -->
+      <div data-cb="question" class="self-center max-w-full text-center text-2xl font-bold bg-base-100/80 rounded-box px-3 py-1 break-words"></div>
     </div>
     <div data-cb="fx" class="absolute inset-0 pointer-events-none overflow-hidden z-10"></div>
   </div>
