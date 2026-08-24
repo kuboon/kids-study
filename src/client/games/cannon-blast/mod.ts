@@ -29,8 +29,11 @@ const BODY_H = BLOCK_H - 2;
 const GEM_R = 12;
 const HUD_CLEARANCE = 96; // keep the tower's top clear of the HUD bar
 
-// The castle is a single tall tower, so every block is reachable by picking the
-// right elevation and knocking out a low block brings the whole stack down.
+// A tall two-column tower: twice the debris for a meatier collapse, while the
+// answer bricks all sit in the LEFT column so they stay easy to read and to
+// pick a target from — the right column is plain wood that comes down with it.
+const TOWER_COLS = 2;
+const ANSWER_COL = 0;
 const TOWER_ROWS_MIN = 7;
 const TOWER_ROWS_MAX = 13;
 
@@ -317,9 +320,12 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
 
     groundTop = H - GROUND_H;
     platTop = groundTop - PLAT_RAISE;
-    // A narrow pedestal under the single tower, set back from the cannon so a
-    // shot has room to arc, but not hard against the right edge.
-    const platW = Math.min(Math.max(BLOCK_W * 2.4, 120), W * 0.42);
+    // A pedestal just wider than the tower, set back from the cannon so a shot
+    // has room to arc, but not hard against the right edge.
+    const platW = Math.min(
+      (TOWER_COLS - 1) * BLOCK_W + BODY_W + 44,
+      W * 0.62,
+    );
     const platCenter = Math.min(W * 0.7, W - platW / 2 - 14);
     platLeft = platCenter - platW / 2;
     platRight = platCenter + platW / 2;
@@ -366,7 +372,7 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
       Math.floor((platTop - HUD_CLEARANCE) / BODY_H),
     );
     return {
-      cols: 1,
+      cols: TOWER_COLS,
       rows: Math.min(TOWER_ROWS_MIN + round, TOWER_ROWS_MAX, fitsHeight),
     };
   };
@@ -385,22 +391,23 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
       for (let r = 0; r < heights[c]; r++) cells.push({ c, r });
     }
 
-    // Spread the 4 answers over the tower's height — one per quarter — so the
-    // player has to pick an elevation rather than hosing one spot, and every
-    // label stays readable instead of clumping.
+    // All four answers live in the left column, spread one per quarter of the
+    // tower's height: the player picks an elevation rather than hosing one
+    // spot, and the labels stay in a single readable line.
+    const answerColumn = cells.filter((cell) => cell.c === ANSWER_COL);
     const answerCells: { c: number; r: number }[] = [];
     for (let band = 0; band < 4; band++) {
       const lo = Math.floor((rows * band) / 4);
       const hi = Math.max(lo, Math.floor((rows * (band + 1)) / 4) - 1);
-      const choices = cells.filter(
+      const choices = answerColumn.filter(
         (cell) => cell.r >= lo && cell.r <= hi && !answerCells.includes(cell),
       );
       if (choices.length) {
         answerCells.push(choices[Math.floor(Math.random() * choices.length)]);
       }
     }
-    // Short towers may not fill four bands; top up from whatever is left.
-    for (const cell of shuffle(cells)) {
+    // Short towers may not fill four bands; top up from the same column.
+    for (const cell of shuffle(answerColumn)) {
       if (answerCells.length >= 4) break;
       if (answerCells.includes(cell)) continue;
       answerCells.push(cell);
@@ -445,12 +452,12 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     // The gem crowns the tallest column. Its body is a flat-bottomed box, not a
     // ball: a circle on a flat top sits in unstable equilibrium and rolls off
     // (and nudges the tower) the instant the solver jitters.
-    let gemCol = 0;
-    for (let c = 1; c < cols; c++) if (heights[c] > heights[gemCol]) gemCol = c;
+    const topRows = Math.max(...heights);
     const gem: BlockInfo = {
       body: Bodies.rectangle(
-        originX + gemCol * BLOCK_W,
-        platTop - heights[gemCol] * BODY_H - GEM_R,
+        // Straddles the columns, resting on both their flat tops.
+        originX + ((cols - 1) * BLOCK_W) / 2,
+        platTop - topRows * BODY_H - GEM_R,
         GEM_R * 2,
         GEM_R * 2,
         {
