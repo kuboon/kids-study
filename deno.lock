@@ -22,9 +22,11 @@
     "npm:@remix-run/html-template@0.3.0": "0.3.0",
     "npm:@remix-run/ui@0.5": "0.5.0",
     "npm:@tailwindcss/oxide@^4.3.3": "4.3.3",
+    "npm:@types/matter-js@~0.20.2": "0.20.2",
     "npm:daisyui@^5.7.17": "5.7.17",
     "npm:lightningcss@^1.33.0": "1.33.0",
     "npm:magic-string@^1.1.0": "1.2.0",
+    "npm:matter-js@0.20": "0.20.0",
     "npm:pure-rand@^8.4.2": "8.4.2",
     "npm:source-map-js@^1.2.1": "1.2.1",
     "npm:tailwindcss@^4.3.3": "4.3.3"
@@ -228,6 +230,9 @@
     "@types/dom-navigation@1.0.7": {
       "integrity": "sha512-Di4W+i2faYquHUnyWUg3bBQp5pTNvjDDA7mIYfD/1WlLgan6sKkeVjGbdL78K0CuNEk5Pfc/c0rfelwkz10mnQ=="
     },
+    "@types/matter-js@0.20.2": {
+      "integrity": "sha512-3PPKy3QxvZ89h9+wdBV2488I1JLVs7DEpIkPvgO8JC1mUdiVSO37ZIvVctOTD7hIq8OAL2gJ3ugGSuUip6DhCw=="
+    },
     "daisyui@5.7.17": {
       "integrity": "sha512-w5U5FdL9hH4/zh8eLXytWQt3c0DgHS1WDw+1yuQykT8nSIE9Vc5wkJVeDymD1JlRDLANDawvN4iIGVaxgV6Cjw=="
     },
@@ -314,6 +319,9 @@
         "@jridgewell/sourcemap-codec"
       ]
     },
+    "matter-js@0.20.0": {
+      "integrity": "sha512-iC9fYR7zVT3HppNnsFsp9XOoQdQN2tUyfaKg4CHLH8bN+j6GT4Gw7IH2rP0tflAebrHFw730RR3DkVSZRX8hwA=="
+    },
     "pure-rand@8.4.2": {
       "integrity": "sha512-vvuOGgcuPJAirlHvuQw1TrOiw7ptaIXXmIbNuiNOY6lNGJJH49PQ1Kj4nd783nPdQhQdicgOjVI2yI/9BD6/Ng=="
     },
@@ -349,7 +357,9 @@
         "dependencies": [
           "npm:@babylonjs/core@^7.54.3",
           "npm:@remix-run/fetch-router@0.18.2",
-          "npm:@remix-run/ui@0.5"
+          "npm:@remix-run/ui@0.5",
+          "npm:@types/matter-js@~0.20.2",
+          "npm:matter-js@0.20"
         ]
       },
       "src/ssg": {

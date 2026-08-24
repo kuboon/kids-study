@@ -7,6 +7,8 @@
   "imports": {
     "@remix-run/ui": "npm:@remix-run/ui@^0.5.0",
     "@remix-run/fetch-router": "npm:@remix-run/fetch-router@0.18.2",
-    "@babylonjs/core": "npm:@babylonjs/core@^7.54.3"
+    "@babylonjs/core": "npm:@babylonjs/core@^7.54.3",
+    "matter-js": "npm:matter-js@^0.20.0",
+    "@types/matter-js": "npm:@types/matter-js@^0.20.2"
   }
 }

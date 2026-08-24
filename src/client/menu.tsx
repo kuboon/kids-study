@@ -22,7 +22,8 @@ type QuizKind =
   | "gate-runner"
   | "minecart"
   | "boss-battle"
-  | "target-shooter";
+  | "target-shooter"
+  | "cannon-blast";
 type StrokeKind = "kanji-writer";
 type GameKind = QuizKind | StrokeKind;
 
@@ -42,6 +43,8 @@ const loadGame = async (kind: QuizKind): Promise<GameModule> => {
     ? await import("./games/boss-battle/mod.ts")
     : kind === "target-shooter"
     ? await import("./games/target-shooter/mod.ts")
+    : kind === "cannon-blast"
+    ? await import("./games/cannon-blast/mod.ts")
     : await import("./games/gate-runner/mod.ts");
   return mod.default;
 };
@@ -144,6 +147,12 @@ export const Menu = clientEntry(
                   selected={game === "target-shooter"}
                 >
                   まとあて
+                </option>
+                <option
+                  value="cannon-blast"
+                  selected={game === "cannon-blast"}
+                >
+                  たいほうドカン
                 </option>
                 <option
                   value="kanji-writer"
