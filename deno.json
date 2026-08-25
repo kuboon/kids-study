@@ -12,7 +12,7 @@
     "build": "deno task --cwd src/builder build",
     "test": "deno test -P",
     "check": "deno check && deno lint && deno fmt --check",
-    "gen:words": "deno run -A tools/gen_kanji_words.ts",
+    "gen:readings": "deno run -A tools/gen_kanji_readings.ts",
     "gen:strokes": "deno run -A tools/gen_kanji_strokes.ts"
   },
   "permissions": {

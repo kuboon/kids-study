@@ -1,15 +1,13 @@
-import kanji1 from "./1.ts";
-import kanji2 from "./2.ts";
-import kanji3 from "./3.ts";
-import kanji4 from "./4.ts";
-import kanji5 from "./5.ts";
-import kanji6 from "./6.ts";
+/**
+ * 読み4択の QuizGenerator（学年別）。出題は quiz/kanji/words/*.ts の語データ
+ * から作る（書き取りゲームと同じデータ）。
+ */
 
-export default [
-  ...kanji1,
-  ...kanji2,
-  ...kanji3,
-  ...kanji4,
-  ...kanji5,
-  ...kanji6,
-];
+import type { QuizGenerator } from "../types.ts";
+import { makeKanjiQuiz } from "./common.ts";
+import { GRADE_WORDS } from "./words/mod.ts";
+
+export default GRADE_WORDS.map((words, i) => ({
+  title: `${i + 1}年生の漢字`,
+  fn: makeKanjiQuiz(words),
+})) satisfies QuizGenerator[];
