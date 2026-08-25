@@ -55,6 +55,27 @@ deno task check    # check + lint + fmt
 クイズ追加: 新規ファイルで `QuizGenerator[]` を default export し、
 `quiz/mod.ts` の配列に `...newTopic` で足す。
 
+## 漢字の出題データ
+
+読み4択と書き取りは**同じ語データ**から出題する。漢字ごとの読み一覧
+（辞書）から機械的に問題を作ると、「読みだけでは漢字が定まらない」 （[き] →
+木/汽/期/季…）「小学校で習わない読みが混ざる」（奈 → いかん）が
+構造的に避けられないため、**語を単位に人が書き、コードは検証に徹する**。
+
+- `quiz/kanji/types.ts` — `KanjiWord`（`target` ＋ 読み `read` ＋ 前後の文脈
+  `pre`/`post`。文脈はかなのみ）と表示関数
+  - 書き取り: `pre + [read] + post` を見せて `target` を書かせる（てん[き]）
+  - 読み4択: `pre + [target] + post` を見せて読みを選ばせる（てん[気]）
+- `quiz/kanji/words/<n>.ts` — 学年別の語データ。**唯一の真実**。手で編集する
+- `quiz/kanji/words_test.ts` — 検証。一意性（同じ出題文が別の漢字を指さない）、
+  読みが辞書に存在すること、文脈がかなのみ、配当表の全漢字を網羅、を保証する
+- `tools/kanji_readings.ts` — **自動生成**（`deno task gen:readings`）。検証用の
+  参照表で、クライアントには含まれない
+
+語を足す・直すときは `quiz/kanji/words/<n>.ts` を編集して `deno task test`。
+「小学校で習う読みか」だけは機械判定できない（常用漢字表の音訓データが
+入手できない）ので、日常語を選ぶ編集判断で担保する。
+
 ## ストローク（書き取り）クイズ
 
 `Quiz`（4択）とは別系統の抽象。「順序付きストローク列＝方向コード列で答える
@@ -67,17 +88,12 @@ deno task check    # check + lint + fmt
 - `quiz/stroke/kanji_strokes.ts` —
   **自動生成**（`tools/gen_kanji_strokes.ts`）。 KanjiVG
   由来のストロークデータで、CC BY-SA 3.0（`/NOTICE` 参照）。編集しない
-- `quiz/stroke/word_types.ts` — 出題語 `WriteWord`（漢字＋読みを `[]` で囲む
-  表示）と `displayWord()`
-- `quiz/stroke/words.ts` —
-  **自動生成**（`tools/gen_kanji_words.ts`）。学年別漢字
-  配当表の全漢字（1〜6年・約1026字）を学年ごとに収録。編集しない
+- `quiz/stroke/kanji.ts` — 書き取りの generator。出題語は読み4択と共通の
+  `quiz/kanji/words/*.ts`（前述）から引く
 - `quiz/stroke/mod.ts` — stroke 系 `StrokeQuizGenerator` を flat 集約
 - データ再生成（ローカルで1回・要ネット、成果物をコミット）:
-  - `deno task gen:words` — 漢字データセットから `words.ts` を生成。出題の
-    読みは自動選定し、`tools/kanji_word_overrides.ts` で個別に上書き（同音異字の
-    曖昧さは全字カバーのため許容）
-  - `deno task gen:strokes` — `words.ts` の全漢字について KanjiVG から
+  - `deno task gen:readings` — 検証用の読み参照表 `tools/kanji_readings.ts`
+  - `deno task gen:strokes` — 語データの全漢字について KanjiVG から
     `kanji_paths.ts` を生成
 
 ストローク系ゲームは `src/client/games/stroke_types.ts` の `StrokeGameMount` を

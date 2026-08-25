@@ -10,7 +10,7 @@
  * licensed CC BY-SA 3.0. The extracted path data is likewise CC BY-SA 3.0.
  */
 
-import { GRADE_WORDS } from "../quiz/stroke/words.ts";
+import { GRADE_WORDS } from "../quiz/kanji/words/mod.ts";
 
 const CACHE_DIR = new URL("./.cache/kanjivg/", import.meta.url);
 const OUT_PATHS = new URL("../quiz/stroke/kanji_paths.ts", import.meta.url);
@@ -76,9 +76,9 @@ const collectChars = (): string[] => {
   const out: string[] = [];
   for (const words of GRADE_WORDS) {
     for (const w of words) {
-      if (!seen.has(w.kanji)) {
-        seen.add(w.kanji);
-        out.push(w.kanji);
+      if (!seen.has(w.target)) {
+        seen.add(w.target);
+        out.push(w.target);
       }
     }
   }
