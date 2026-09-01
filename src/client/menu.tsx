@@ -1,6 +1,11 @@
 /**
- * Menu — landing page launcher. Pick a game type from a dropdown, pick a
- * quiz from the list, and the game mounts in place. Going back unmounts.
+ * Menu — landing page launcher. ゲームの種類をプルダウンで選び、学年ごとに
+ * 並んだ問題の一覧から1つ選ぶとその場でゲームが始まる。戻ると unmount する。
+ *
+ * 一覧は4択の問題（quiz/mod.ts）と書き取りの問題（quiz/stroke/mod.ts）を
+ * 学年で束ねて1つに混ぜる。書き取りは入力方法が根本的に違う（なぞって書く）
+ * ため他のゲームでは遊べない。そこでプルダウンには載せず、書き取りの問題が
+ * 選ばれたときに自動で「漢字かきとり」を使う。
  */
 
 import {
@@ -12,11 +17,10 @@ import {
 } from "@remix-run/ui";
 import quizzes from "../../quiz/mod.ts";
 import strokeQuizzes from "../../quiz/stroke/mod.ts";
+import { ADVANCED, type Grade } from "../../quiz/types.ts";
 import type { GameModule } from "./games/types.ts";
 
-// Two domains of game: 4-choice `Quiz` games vs stroke-writing `StrokeQuiz`
-// games. Each domain draws from its own quiz list, so a stroke game can never
-// be handed an arithmetic/katakana quiz.
+// プルダウンに出るゲーム（4択の問題で遊ぶもの）。
 type QuizKind =
   | "simple"
   | "gate-runner"
@@ -24,15 +28,6 @@ type QuizKind =
   | "boss-battle"
   | "target-shooter"
   | "cannon-blast";
-type StrokeKind = "kanji-writer";
-type GameKind = QuizKind | StrokeKind;
-
-const STROKE_KINDS: readonly GameKind[] = ["kanji-writer"];
-const isStroke = (k: GameKind): k is StrokeKind => STROKE_KINDS.includes(k);
-
-// The quiz list to show for a given game (both have `title`).
-const listFor = (k: GameKind): readonly { title: string }[] =>
-  isStroke(k) ? strokeQuizzes : quizzes;
 
 const loadGame = async (kind: QuizKind): Promise<GameModule> => {
   const mod = kind === "simple"
@@ -49,6 +44,42 @@ const loadGame = async (kind: QuizKind): Promise<GameModule> => {
   return mod.default;
 };
 
+const GAME_OPTIONS: readonly { value: QuizKind; label: string }[] = [
+  { value: "simple", label: "シンプル選択式" },
+  { value: "gate-runner", label: "ゲートランナー" },
+  { value: "minecart", label: "トロッコでダイヤ" },
+  { value: "boss-battle", label: "ボスバトル" },
+  { value: "target-shooter", label: "まとあて" },
+  { value: "cannon-blast", label: "たいほうドカン" },
+];
+
+/** 一覧の1項目。どちらの問題集の何番目かを持つ。 */
+type Entry = { kind: "quiz" | "stroke"; index: number; title: string };
+
+const GRADES: readonly Grade[] = [1, 2, 3, 4, 5, 6, ADVANCED];
+
+// 1年生はまだ「年生」を読めないのでかな書きにする。
+const gradeLabel = (g: Grade): string =>
+  g === 1 ? "1ねんせい" : g === ADVANCED ? "はってん（中学校〜）" : `${g}年生`;
+
+/** 学年ごとに、4択の問題と書き取りの問題をまとめた一覧を作る。 */
+const entriesByGrade = (): readonly { grade: Grade; entries: Entry[] }[] =>
+  GRADES.map((grade) => ({
+    grade,
+    entries: [
+      ...quizzes.flatMap((q, index) =>
+        q.grade === grade
+          ? [{ kind: "quiz" as const, index, title: q.title }]
+          : []
+      ),
+      ...strokeQuizzes.flatMap((q, index) =>
+        q.grade === grade
+          ? [{ kind: "stroke" as const, index, title: q.title }]
+          : []
+      ),
+    ],
+  })).filter((g) => g.entries.length > 0);
+
 export interface MenuProps {
   [key: string]: SerializableValue;
 }
@@ -56,22 +87,22 @@ export interface MenuProps {
 export const Menu = clientEntry(
   "./menu.js#Menu",
   function Menu(handle: Handle<MenuProps>) {
-    let game: GameKind = "gate-runner";
-    let activeQuiz: number | null = null;
+    let game: QuizKind = "gate-runner";
+    let active: Entry | null = null;
 
     const back = () => {
-      activeQuiz = null;
+      active = null;
       handle.update();
     };
 
-    const start = (i: number) => {
-      activeQuiz = i;
+    const start = (entry: Entry) => {
+      active = entry;
       handle.update();
     };
 
     return () => {
-      if (activeQuiz !== null) {
-        const idx = activeQuiz;
+      if (active !== null) {
+        const started = active;
         return (
           <div class="absolute inset-0">
             <button
@@ -87,18 +118,21 @@ export const Menu = clientEntry(
               mix={[
                 ref((el, signal) => {
                   const host = el as HTMLElement;
-                  if (isStroke(game)) {
+                  if (started.kind === "stroke") {
+                    // 書き取りは専用ゲームでしか遊べないので自動で選ぶ。
                     import("./games/kanji-writer/mod.ts").then((m) => {
                       if (signal.aborted) return;
                       const teardown = m.default.mount(host, {
-                        quiz: strokeQuizzes[idx],
+                        quiz: strokeQuizzes[started.index],
                       });
                       signal.addEventListener("abort", () => teardown());
                     });
                   } else {
                     loadGame(game).then((g) => {
                       if (signal.aborted) return;
-                      const teardown = g.mount(host, { quiz: quizzes[idx] });
+                      const teardown = g.mount(host, {
+                        quiz: quizzes[started.index],
+                      });
                       signal.addEventListener("abort", () => teardown());
                     });
                   }
@@ -119,63 +153,37 @@ export const Menu = clientEntry(
                 mix={[
                   on("change", (e) => {
                     const t = e.currentTarget as HTMLSelectElement;
-                    game = t.value as GameKind;
+                    game = t.value as QuizKind;
                     handle.update();
                   }),
                 ]}
               >
-                <option value="simple" selected={game === "simple"}>
-                  シンプル選択式
-                </option>
-                <option
-                  value="gate-runner"
-                  selected={game === "gate-runner"}
-                >
-                  ゲートランナー
-                </option>
-                <option value="minecart" selected={game === "minecart"}>
-                  トロッコでダイヤ
-                </option>
-                <option
-                  value="boss-battle"
-                  selected={game === "boss-battle"}
-                >
-                  ボスバトル
-                </option>
-                <option
-                  value="target-shooter"
-                  selected={game === "target-shooter"}
-                >
-                  まとあて
-                </option>
-                <option
-                  value="cannon-blast"
-                  selected={game === "cannon-blast"}
-                >
-                  たいほうドカン
-                </option>
-                <option
-                  value="kanji-writer"
-                  selected={game === "kanji-writer"}
-                >
-                  漢字かきとり
-                </option>
+                {GAME_OPTIONS.map((o) => (
+                  <option value={o.value} selected={game === o.value}>
+                    {o.label}
+                  </option>
+                ))}
               </select>
             </fieldset>
 
-            <ul class="menu bg-base-200 rounded-box w-full text-base">
-              {listFor(game).map((q, i) => (
-                <li>
-                  <button
-                    type="button"
-                    class="text-left"
-                    mix={[on("click", () => start(i))]}
-                  >
-                    {q.title}
-                  </button>
-                </li>
-              ))}
-            </ul>
+            {entriesByGrade().map(({ grade, entries }) => (
+              <section>
+                <h2 class="text-lg font-bold px-1 pb-1">{gradeLabel(grade)}</h2>
+                <ul class="menu bg-base-200 rounded-box w-full text-base">
+                  {entries.map((entry) => (
+                    <li>
+                      <button
+                        type="button"
+                        class="text-left"
+                        mix={[on("click", () => start(entry))]}
+                      >
+                        {entry.title}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
           </div>
         </div>
       );

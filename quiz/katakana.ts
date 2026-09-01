@@ -24,9 +24,11 @@ function katanakaQuiz(seed: number): Quiz {
   return { q, a, wrong };
 }
 
+// 片仮名を読み書きするのは学習指導要領（国語）の第1学年の指導事項。
 export default [
   {
     title: "カタカナ",
+    grade: 1,
     fn: katanakaQuiz,
   },
 ] satisfies QuizGenerator[];

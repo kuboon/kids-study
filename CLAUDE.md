@@ -43,7 +43,9 @@ deno task check    # check + lint + fmt
 
 - `quiz/types.ts`
   - `Quiz` — `{ q: HtmlString, a: HtmlString, wrong(): HtmlString }`
-  - `QuizGenerator` — `{ title: string, fn(seed: number): Quiz }`
+  - `QuizGenerator` — `{ title: string, grade: Grade, fn(seed: number): Quiz }`
+  - `Grade` — 配当学年 1〜6（学習指導要領の内容配当に合わせる）と、小学校の
+    範囲を超えるものを表す `ADVANCED`（負の数は中学1年）
 - `quiz/prng.ts` — シード可能な PRNG（pure-rand ベース）。`fn(seed)` は同じ seed
   なら同じ問題を返すように決定的に実装する
 - `quiz/<topic>.ts` または `quiz/<topic>/<n>.ts` — 教科別ファイル。
@@ -53,7 +55,10 @@ deno task check    # check + lint + fmt
   配列を見る
 
 クイズ追加: 新規ファイルで `QuizGenerator[]` を default export し、
-`quiz/mod.ts` の配列に `...newTopic` で足す。
+`quiz/mod.ts` の配列に `...newTopic` で足す。`grade` は「何年生で習う内容か」を
+学習指導要領で確かめて決める。ランチャは一覧を `grade`
+ごとに束ねて表示するので、 タイトルに学年は入れない（1年生向けは
+まだ漢字を習っていないのでかな書き）。
 
 ## 漢字の出題データ
 
@@ -97,8 +102,9 @@ deno task check    # check + lint + fmt
     `kanji_paths.ts` を生成
 
 ストローク系ゲームは `src/client/games/stroke_types.ts` の `StrokeGameMount` を
-実装し、`menu.tsx` は `isStroke()` でクイズ一覧と mount
-先を出し分ける（4択ゲーム とは別のクイズ配列 `quiz/stroke/mod.ts` から選ぶ）。
+実装する。書き取りは入力方法が根本的に違うため他のゲームでは遊べない。そこで
+`menu.tsx` のゲーム種別プルダウンには載せず、一覧で書き取りの問題が選ばれたら
+自動で「漢字かきとり」を mount する（4択の問題は選択中のゲームで遊ぶ）。
 
 ## ゲーム追加手順
 
@@ -119,9 +125,9 @@ deno task check    # check + lint + fmt
    - canvas が必要ならゲーム内で作って append、HUD も同様。すべて teardown で
      後始末
 2. `src/client/menu.tsx` に取り込む:
-   - `GameKind` 型に `"<name>"` を追加
+   - `QuizKind` 型に `"<name>"` を追加
    - `loadGame` の分岐に `import("./games/<name>/mod.ts")` を追加
-   - ドロップダウンの `<option value="<name>">表示名</option>` を追加
+   - `GAME_OPTIONS` に `{ value: "<name>", label: "表示名" }` を追加
 3. これだけ。SSG ページ・ナビ・ルート・`JS_ENTRIES` は触らない（ゲームは
    `menu.js` 内に dynamic import 経由で取り込まれる）。
 
