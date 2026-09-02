@@ -21,6 +21,8 @@ import { Sprite } from "@babylonjs/core/Sprites/sprite.js";
 import type { GameModule, GameMount } from "../types.ts";
 import type { Quiz } from "../../../../quiz/types.ts";
 import { createSession, type QuizSession } from "../../../../quiz/session.ts";
+import { plainMath } from "../../../../quiz/math/mathml.ts";
+import { drawMathLine } from "../math_text.ts";
 
 const STREAK_TO_CLEAR = 10;
 const INITIAL_CROWD = 8;
@@ -60,8 +62,6 @@ type Gate = {
   right: GateSide;
   resolved: boolean;
 };
-
-const stripHtml = (s: string) => s.replace(/<[^>]*>/g, "");
 
 export const mount: GameMount = (container, { quiz, onComplete }) => {
   // ---- DOM scaffolding -----------------------------------------------------
@@ -306,16 +306,16 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     // Shrink font when the string is long (e.g. 5-character kanji choices)
-    // so it never overflows the gate face.
-    const MAX_TEXT_WIDTH = 460;
-    const BASE_FONT = 130;
-    ctx.font = `bold ${BASE_FONT}px sans-serif`;
-    const measured = ctx.measureText(text).width;
-    if (measured > MAX_TEXT_WIDTH) {
-      const fontSize = Math.floor(BASE_FONT * MAX_TEXT_WIDTH / measured);
-      ctx.font = `bold ${fontSize}px sans-serif`;
-    }
-    ctx.fillText(text, 256, 130);
+    // so it never overflows the gate face. Fractions are drawn with a real
+    // rule bar rather than a slash, so this goes through the shared helper.
+    drawMathLine(ctx, text, {
+      x: 256,
+      y: 130,
+      base: 130,
+      min: 40,
+      maxWidth: 460,
+      maxHeight: 200,
+    });
     tex.update(false);
     // Box's -Z face samples V inverted relative to canvas Y; flip so the
     // text reads upright when viewed from the camera.
@@ -546,12 +546,14 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     disposeGate(state.gate);
     const q = session.next();
     state.currentQuiz = q;
-    const correctText = stripHtml(q.a);
-    let wrongText = stripHtml(q.wrong());
+    // Keep the display markup (fractions are MathML); compare on the plain
+    // form so two spellings of the same value never end up on both gates.
+    const correctText = q.a;
+    let wrongText = q.wrong();
     // Avoid degenerate identical pair
     let safety = 8;
-    while (wrongText === correctText && safety-- > 0) {
-      wrongText = stripHtml(q.wrong());
+    while (plainMath(wrongText) === plainMath(correctText) && safety-- > 0) {
+      wrongText = q.wrong();
     }
     const correctOnLeft = Math.random() < 0.5;
     const left = makeGate(

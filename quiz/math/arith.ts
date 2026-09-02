@@ -57,7 +57,9 @@ export const multQuiz =
   (ln: number, minus: boolean) => (seed: number): Quiz => {
     const prng = new PRNG(seed);
     const max = maxOf(ln);
-    const min = minus ? -max : 0;
+    // 九九は1〜9。0を混ぜると答えが0の問題ばかりになるうえ、誤答生成で
+    // 因数が-1に振れて負の選択肢が出てしまう。
+    const min = minus ? -max : 1;
     const x = prng.uniformInt(min, max);
     const y = prng.uniformInt(min, max);
     const yStr = minus && y < 0 ? `(${y})` : y.toString();
@@ -67,7 +69,7 @@ export const multQuiz =
       const dx = prng.uniformInt(-1, 1);
       const dy = prng.uniformInt(-1, 1);
       const w = (x + dx) * (y + dy);
-      if (w === a) {
+      if (w === a || (!minus && w < 0)) {
         return wrong();
       }
       return w.toString();

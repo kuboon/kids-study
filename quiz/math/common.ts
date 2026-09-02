@@ -3,11 +3,12 @@
  *
  * 4択は「正解と紛らわしい誤答」が要なので、誤答は問題ごとに近い値を作る。
  * また小数と分数は文字列で答えるため、表示の正規化をここに集約する。
- * ゲームによっては `Quiz.a` から HTML を剥がして表示するので、答えは
- * タグを含まないプレーンな文字列で組み立てること。
+ * 分数だけは MathML（`mathml.ts`）で組む。ゲーム側はこの markup を読める
+ * （`plainMath` / `mathTokens`）ので、答えをプレーン文字列に限る必要はない。
  */
 
 import type { PRNG } from "../prng.ts";
+import { frac } from "./mathml.ts";
 
 /** 整数の桁数から最大値（2 → 99）。 */
 export const maxOf = (digits: number): number => 10 ** digits - 1;
@@ -34,12 +35,16 @@ export const gcd = (a: number, b: number): number => {
 
 export const lcm = (a: number, b: number): number => a / gcd(a, b) * b;
 
-/** 約分した分数。分母が1なら整数として表す（4/4 → 1、8/4 → 2）。 */
+/**
+ * 約分した分数。分母が1なら整数として表す（4/4 → 1、8/4 → 2）。
+ * 約分してから組むので、同じ値なら必ず同じ markup になる（誤答の重複判定が
+ * 文字列比較のままで済む）。
+ */
 export const fraction = (num: number, den: number): string => {
   const g = gcd(num, den) || 1;
   const n = num / g;
   const d = den / g;
-  return d === 1 ? String(n) : `${n}/${d}`;
+  return d === 1 ? String(n) : frac(n, d);
 };
 
 /**

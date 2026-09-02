@@ -60,6 +60,29 @@ deno task check    # check + lint + fmt
 ごとに束ねて表示するので、 タイトルに学年は入れない（1年生向けは
 まだ漢字を習っていないのでかな書き）。
 
+## 数式の表示（MathML）
+
+分数は `1/2` というスラッシュ表記にせず、横棒つきの分数として見せる。組版は
+MathML に任せる。
+
+- `quiz/math/mathml.ts` — markup を組む関数（`frac` / `mathRow` / `mfrac` / `mn`
+  / `mo`）と、それを読み戻す関数（`mathTokens` / `plainMath`）
+  - `plainMath()` は markup をプレーン表記（`1/2`）に落とす。答えの同一判定や
+    検算に使う。markup を含まない文字列は1文字も変えない（従来の `stripHtml`
+    の置き換えなので、漢字など他教科の出題を壊さない）
+  - パーサは DOM を使わない。DOMParser の無い Deno のテストから同じ関数を
+    呼ぶため
+- `quiz/math/common.ts` の `fraction()` が唯一の分数の入口。約分してから組むので
+  同じ値なら必ず同じ markup になり、誤答の重複判定は文字列比較のままでよい
+- ゲーム側の描き分け
+  - HTML に描くもの（simple / boss-battle / target-shooter）は markup を
+    `innerHTML` に入れ、同一判定だけ `plainMath()` の結果で行う
+  - canvas に描くもの（cannon-blast / gate-runner / minecart）は MathML が
+    使えないので `src/client/games/math_text.ts` の `drawMathLine()` を呼ぶ。
+    `mathTokens` を見て横棒を自前で引き、枠に収まるようフォントを縮める
+- 見た目は `src/assets/style.css` の `math { math-style: normal }` で
+  教科書と同じ大きさの分数にしている。canvas 側の `PART_RATIO` もこれに揃える
+
 ## 漢字の出題データ
 
 読み4択と書き取りは**同じ語データ**から出題する。漢字ごとの読み一覧

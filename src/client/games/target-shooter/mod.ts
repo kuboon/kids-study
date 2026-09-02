@@ -9,6 +9,7 @@
  */
 
 import { createSession, type QuizSession } from "../../../../quiz/session.ts";
+import { plainMath } from "../../../../quiz/math/mathml.ts";
 import type { GameModule, GameMount } from "../types.ts";
 
 const ROUNDS_TO_CLEAR = 8;
@@ -37,8 +38,6 @@ const SIDE_MARGIN = 12;
 const TARGET_MIN_SPACING = TARGET_SIZE * 1.15; // also used to clear the shooter itself
 
 const RESOLVE_DELAY_MS = 650;
-
-const stripHtml = (s: string) => s.replace(/<[^>]*>/g, "");
 
 const shuffle = <T>(arr: T[]): T[] => {
   const a = arr.slice();
@@ -365,7 +364,7 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
       const node = document.createElement("div");
       node.className =
         "w-full h-full flex items-center justify-center rounded-full bg-base-100 border-4 border-primary shadow-lg font-bold text-center px-1 text-lg";
-      node.textContent = v;
+      node.innerHTML = v;
       wrap.appendChild(node);
       layer.appendChild(wrap);
 
@@ -384,12 +383,17 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
 
   const ask = () => {
     const q = session.next();
-    const correct = stripHtml(q.a);
+    // Targets show the display markup (fractions are MathML) but are deduped
+    // on the plain form, so the same value never appears on two targets.
+    const correct = q.a;
+    const seen = new Set([plainMath(correct)]);
     const wrongs: string[] = [];
     let safety = 16;
     while (wrongs.length < 3 && safety-- > 0) {
-      const w = stripHtml(q.wrong());
-      if (w !== correct && !wrongs.includes(w)) wrongs.push(w);
+      const w = q.wrong();
+      if (seen.has(plainMath(w))) continue;
+      seen.add(plainMath(w));
+      wrongs.push(w);
     }
     while (wrongs.length < 3) wrongs.push(`?${wrongs.length}`);
     el("question").innerHTML = q.q;

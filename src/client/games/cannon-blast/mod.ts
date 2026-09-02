@@ -12,6 +12,8 @@
 // @ts-types="@types/matter-js"
 import Matter from "matter-js";
 import { createSession, type QuizSession } from "../../../../quiz/session.ts";
+import { plainMath } from "../../../../quiz/math/mathml.ts";
+import { drawMathLine } from "../math_text.ts";
 import type { GameModule, GameMount } from "../types.ts";
 
 const { Engine, Bodies, Body, Composite, Events, Sleeping } = Matter;
@@ -77,8 +79,6 @@ const BALL_TIERS: readonly BallTier[] = [
   { r: 20, density: 0.05, blast: 300, kick: 30, fill: "#f5c518" },
 ];
 const tierForStreak = (s: number) => (s >= 4 ? 2 : s >= 2 ? 1 : 0);
-
-const stripHtml = (s: string) => s.replace(/<[^>]*>/g, "");
 
 const shuffle = <T>(arr: T[]): T[] => {
   const a = arr.slice();
@@ -509,12 +509,17 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
 
   const ask = () => {
     const q = session.next();
-    const correct = stripHtml(q.a);
+    // Block labels keep the display markup (fractions are MathML); dedupe on
+    // the plain form so no two blocks show the same value.
+    const correct = q.a;
+    const seen = new Set([plainMath(correct)]);
     const wrongs: string[] = [];
     let safety = 16;
     while (wrongs.length < 3 && safety-- > 0) {
-      const w = stripHtml(q.wrong());
-      if (w !== correct && !wrongs.includes(w)) wrongs.push(w);
+      const w = q.wrong();
+      if (seen.has(plainMath(w))) continue;
+      seen.add(plainMath(w));
+      wrongs.push(w);
     }
     while (wrongs.length < 3) wrongs.push(`?${wrongs.length}`);
     el("question").innerHTML = q.q;
@@ -886,17 +891,18 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
             c.roundRect(-w / 2 + 4, -h / 2 + 4, w - 8, h - 8, 3);
             c.fill();
           }
-          const label = info.label ?? "";
-          let size = 17;
-          c.font = `bold ${size}px system-ui, sans-serif`;
-          while (size > 9 && c.measureText(label).width > w - 10) {
-            size--;
-            c.font = `bold ${size}px system-ui, sans-serif`;
-          }
           c.fillStyle = iron ? "#3f4753" : "#4a3520";
-          c.textAlign = "center";
-          c.textBaseline = "middle";
-          c.fillText(label, 0, 1);
+          // Fractions are drawn with a rule bar; the helper shrinks the font
+          // until the label fits the block face.
+          drawMathLine(c, info.label ?? "", {
+            x: 0,
+            y: 1,
+            base: 17,
+            min: 9,
+            maxWidth: w - 10,
+            maxHeight: h - 8,
+            family: "system-ui, sans-serif",
+          });
         } else {
           c.strokeStyle = "#c49a5e";
           c.lineWidth = 1;

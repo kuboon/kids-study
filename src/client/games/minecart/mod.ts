@@ -24,6 +24,8 @@ import { Sprite } from "@babylonjs/core/Sprites/sprite.js";
 import type { GameModule, GameMount } from "../types.ts";
 import type { Quiz } from "../../../../quiz/types.ts";
 import { createSession, type QuizSession } from "../../../../quiz/session.ts";
+import { plainMath } from "../../../../quiz/math/mathml.ts";
+import { drawMathLine } from "../math_text.ts";
 
 const STREAK_TO_CLEAR = 10;
 const INITIAL_DIAMONDS = 8;
@@ -62,8 +64,6 @@ type StonePair = {
   right: StoneSide;
   resolved: boolean;
 };
-
-const stripHtml = (s: string) => s.replace(/<[^>]*>/g, "");
 
 // Tiny seeded LCG so the pixel-noise textures are stable per build but not
 // dependent on Math.random's run-to-run ordering.
@@ -569,18 +569,19 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     ctx.fillStyle = "#fefefe";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    const MAX_TEXT_WIDTH = 200;
-    const BASE_FONT = 110;
-    ctx.font = `bold ${BASE_FONT}px sans-serif`;
-    const measured = ctx.measureText(text).width;
-    const fontSize = measured > MAX_TEXT_WIDTH
-      ? Math.floor(BASE_FONT * MAX_TEXT_WIDTH / measured)
-      : BASE_FONT;
-    ctx.font = `bold ${fontSize}px sans-serif`;
     ctx.shadowColor = "rgba(0,0,0,0.7)";
     ctx.shadowBlur = 4;
     ctx.shadowOffsetY = 2;
-    ctx.fillText(text, W / 2, 130);
+    // Fractions get a real rule bar instead of a slash; the helper also
+    // shrinks the font when the label is too wide for the stone face.
+    drawMathLine(ctx, text, {
+      x: W / 2,
+      y: 130,
+      base: 110,
+      min: 36,
+      maxWidth: 200,
+      maxHeight: 190,
+    });
     ctx.shadowBlur = 0;
 
     finishPixelTex(tex);
@@ -925,11 +926,13 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
     disposePair(state.pair);
     const q = session.next();
     state.currentQuiz = q;
-    const correctText = stripHtml(q.a);
-    let wrongText = stripHtml(q.wrong());
+    // Keep the display markup (fractions are MathML); compare on the plain
+    // form so the same value never lands on both stones.
+    const correctText = q.a;
+    let wrongText = q.wrong();
     let safety = 8;
-    while (wrongText === correctText && safety-- > 0) {
-      wrongText = stripHtml(q.wrong());
+    while (plainMath(wrongText) === plainMath(correctText) && safety-- > 0) {
+      wrongText = q.wrong();
     }
     const correctOnLeft = Math.random() < 0.5;
     const left = makeStone(
