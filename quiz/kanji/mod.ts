@@ -3,11 +3,14 @@
  * から作る（書き取りゲームと同じデータ）。
  */
 
-import type { QuizGenerator } from "../types.ts";
+import type { Grade, QuizGenerator } from "../types.ts";
 import { makeKanjiQuiz } from "./common.ts";
 import { GRADE_WORDS } from "./words/mod.ts";
 
+// 学年は学年別漢字配当表そのもの。一覧を学年ごとに束ねるので、タイトルには
+// 学年を入れない（1年生はまだ「漢字」を読めないのでかな書き）。
 export default GRADE_WORDS.map((words, i) => ({
-  title: `${i + 1}年生の漢字`,
+  title: i === 0 ? "かんじの よみ" : "漢字の読み",
+  grade: (i + 1) as Grade,
   fn: makeKanjiQuiz(words),
 })) satisfies QuizGenerator[];

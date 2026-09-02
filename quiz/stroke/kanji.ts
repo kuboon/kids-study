@@ -10,6 +10,7 @@
 import { PRNG } from "../prng.ts";
 import { displayWrite, type KanjiWord } from "../kanji/types.ts";
 import { GRADE_WORDS } from "../kanji/words/mod.ts";
+import type { Grade } from "../types.ts";
 import type { StrokeQuizGenerator } from "./types.ts";
 import { KANJI_PATHS } from "./kanji_paths.ts";
 
@@ -29,6 +30,7 @@ const makeGen =
   };
 
 export default GRADE_WORDS.map((words, i) => ({
-  title: `${i + 1}年生の漢字（かきとり）`,
+  title: i === 0 ? "かんじの かきとり" : "漢字の書き取り",
+  grade: (i + 1) as Grade,
   fn: makeGen(playable(words)),
 })) satisfies StrokeQuizGenerator[];

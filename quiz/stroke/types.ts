@@ -5,6 +5,8 @@
  * simplification.)
  */
 
+import type { Grade } from "../types.ts";
+
 export type StrokeQuiz = {
   /** The kanji to write, drawn from `paths` (also the answer). */
   label: string;
@@ -16,6 +18,8 @@ export type StrokeQuiz = {
 
 export type StrokeQuizGenerator = {
   title: string;
+  /** 配当学年。4択と同じ一覧に学年ごとに並べるために持つ。 */
+  grade: Grade;
   /** Deterministic: same seed → same StrokeQuiz. */
   fn: (seed: number) => StrokeQuiz;
 };
