@@ -8,6 +8,7 @@ import grade1 from "./1.ts";
 import grade2 from "./2.ts";
 import grade3 from "./3.ts";
 import grade4 from "./4.ts";
+import grade5 from "./5.ts";
 import advanced from "./advanced.ts";
 
 export default [
@@ -15,5 +16,6 @@ export default [
   ...grade2,
   ...grade3,
   ...grade4,
+  ...grade5,
   ...advanced,
 ] satisfies QuizGenerator[];

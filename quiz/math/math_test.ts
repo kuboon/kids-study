@@ -182,6 +182,72 @@ Deno.test("あまりのあるわり算: 商×除数+あまり が被除数に戻
   assertEquals(checked, SEEDS.length);
 });
 
+Deno.test("文章題の検算（式パーサでは確かめられない分）", () => {
+  // 生成側とは別に、問題文から答えを計算し直す。
+  const gcd2 = (a: number, b: number): number => b ? gcd2(b, a % b) : a;
+  const checks: [RegExp, (m: RegExpExecArray) => string][] = [
+    [/^(\d+) は ぐう数？ き数？$/, (m) => +m[1] % 2 === 0 ? "ぐう数" : "き数"],
+    [/^(\d+) と (\d+) の 最大公約数は？$/, (m) => String(gcd2(+m[1], +m[2]))],
+    [
+      /^(\d+) と (\d+) の 最小公倍数は？$/,
+      (m) => String(+m[1] / gcd2(+m[1], +m[2]) * +m[2]),
+    ],
+    [/^(\d+) の (\d+)% は いくつ？$/, (m) => String(+m[1] * +m[2] / 100)],
+    [
+      /^([\d, ]+) の 平均は？$/,
+      (m) => {
+        const v = m[1].split(",").map(Number);
+        return String(v.reduce((s, x) => s + x, 0) / v.length);
+      },
+    ],
+    [
+      /^(\d+)km を (\d+)時間で 進む 速さは 時速なんkm？$/,
+      (m) => String(+m[1] / +m[2]),
+    ],
+    [
+      /^1ぺんが (\d+)cm の 正方形の 面積は なんcm²？$/,
+      (m) => String(Number(m[1]) ** 2),
+    ],
+    [
+      /^たて (\d+)cm よこ (\d+)cm の 長方形の 面積は なんcm²？$/,
+      (m) => String(+m[1] * +m[2]),
+    ],
+    [
+      /^底辺 (\d+)cm 高さ (\d+)cm の 三角形の 面積は なんcm²？$/,
+      (m) => String(+m[1] * +m[2] / 2),
+    ],
+    [
+      /^底辺 (\d+)cm 高さ (\d+)cm の 平行四辺形の 面積は なんcm²？$/,
+      (m) => String(+m[1] * +m[2]),
+    ],
+    [
+      /^1ぺんが (\d+)cm の 立方体の 体積は なんcm³？$/,
+      (m) => String(Number(m[1]) ** 3),
+    ],
+    [
+      /^たて (\d+)cm よこ (\d+)cm 高さ (\d+)cm の 直方体の 体積は なんcm³？$/,
+      (m) => String(+m[1] * +m[2] * +m[3]),
+    ],
+  ];
+  const hit = new Set<number>();
+  let checked = 0;
+  for (const gen of math) {
+    for (const seed of SEEDS) {
+      const q = gen.fn(seed);
+      for (const [re, calc] of checks) {
+        const m = re.exec(q.q);
+        if (!m) continue;
+        assertEquals(q.a, calc(m), `${gen.title}: ${q.q} の答えが違う`);
+        hit.add(checks.findIndex(([r]) => r === re));
+        checked++;
+      }
+    }
+  }
+  // 文章題の型をすべて通っていること（正規表現の書き間違いで素通りするのを防ぐ）
+  assertEquals(hit.size, checks.length, "検算できていない文章題の型がある");
+  assert(checked > 1000, `検算できた文章題が少なすぎる (${checked})`);
+});
+
 Deno.test("がい数: 四捨五入の結果になっている", () => {
   const gen = math.find((g) => g.title.includes("がい数"));
   assert(gen, "がい数が見つからない");
