@@ -16,10 +16,17 @@ import math from "./mod.ts";
 
 // ---- 式の評価（生成側とは独立した再帰下降パーサ） -------------------------
 
-/** "12 + 3", "(3 + 4) × 5", "1/5 + 2/5" などを数値にする。扱えなければ null。 */
+/**
+ * "12 + 3", "(3 + 4) × 5", "1/5 + 2/5", "3/4 ÷ 7/9" などを数値にする。
+ * 扱えなければ null。
+ *
+ * 出題では `/` は分数、`×`/`÷` は演算にしか使わない。そこで `a/b` は1つの
+ * 項（分数）として先に読む。`/` を除算として左結合で読むと "3/4 ÷ 7/9" が
+ * ((3/4)/7)/9 になってしまう。
+ */
 export const evalExpr = (src: string): number | null => {
-  if (!/^[\d\s.+\-×÷*/()]+$/.test(src)) return null;
-  const s = src.replace(/\s/g, "").replace(/×/g, "*").replace(/÷/g, "/");
+  if (!/^[\d\s.+\-×÷/()]+$/.test(src)) return null;
+  const s = src.replace(/\s/g, "");
   let i = 0;
   const peek = () => s[i];
   const expr = (): number => {
@@ -33,13 +40,14 @@ export const evalExpr = (src: string): number | null => {
   };
   const term = (): number => {
     let v = factor();
-    while (peek() === "*" || peek() === "/") {
+    while (peek() === "×" || peek() === "÷") {
       const op = s[i++];
       const r = factor();
-      v = op === "*" ? v * r : v / r;
+      v = op === "×" ? v * r : v / r;
     }
     return v;
   };
+  /** 数、分数 a/b、または ( ... )。 */
   const factor = (): number => {
     if (peek() === "(") {
       i++;
@@ -54,7 +62,13 @@ export const evalExpr = (src: string): number | null => {
     const m = /^\d+(\.\d+)?/.exec(s.slice(i));
     if (!m) throw new Error(`数値が読めない: ${src} @${i}`);
     i += m[0].length;
-    return Number(m[0]);
+    const n = Number(m[0]);
+    if (peek() !== "/") return n;
+    i++; // 分数の区切り
+    const d = /^\d+(\.\d+)?/.exec(s.slice(i));
+    if (!d) throw new Error(`分母が読めない: ${src} @${i}`);
+    i += d[0].length;
+    return n / Number(d[0]);
   };
   const v = expr();
   return i === s.length ? v : null;
@@ -67,6 +81,9 @@ Deno.test("evalExpr: 演算の優先順位と分数表記", () => {
   // 二進小数で誤差が出るので許容差で比べる
   assert(Math.abs(evalExpr("1/5 + 2/5")! - 0.6) < 1e-9);
   assert(Math.abs(evalExpr("1.5 + 2.3")! - 3.8) < 1e-9);
+  // 分数は1つの項として読む（÷ と / を取り違えない）
+  assert(Math.abs(evalExpr("3/4 ÷ 7/9")! - 27 / 28) < 1e-9);
+  assert(Math.abs(evalExpr("3/4 × 2/5")! - 6 / 20) < 1e-9);
   assertEquals(evalExpr("なんcm²？"), null);
 });
 
@@ -227,6 +244,46 @@ Deno.test("文章題の検算（式パーサでは確かめられない分）", 
     [
       /^たて (\d+)cm よこ (\d+)cm 高さ (\d+)cm の 直方体の 体積は なんcm³？$/,
       (m) => String(+m[1] * +m[2] * +m[3]),
+    ],
+    [
+      /^半径 (\d+)cm の 円の 面積は なんcm²？（円周率 3.14）$/,
+      (m) => String(Number(m[1]) ** 2 * 314 / 100),
+    ],
+    [
+      /^底面積 (\d+)cm² 高さ (\d+)cm の 角柱の 体積は なんcm³？$/,
+      (m) => String(+m[1] * +m[2]),
+    ],
+    [
+      /^x × (\d+) ([+\-]) (\d+) の x に (\d+) を あてはめると？$/,
+      (m) =>
+        String(m[2] === "+" ? +m[4] * +m[1] + +m[3] : +m[4] * +m[1] - +m[3]),
+    ],
+    [
+      /^(\d+):(\d+) を かんたんに すると？$/,
+      (m) => {
+        const g = gcd2(+m[1], +m[2]);
+        return `${+m[1] / g}:${+m[2] / g}`;
+      },
+    ],
+    [
+      /^y は x に 比例し、x が (\d+) の とき y は (\d+)。x が (\d+) の とき y は？$/,
+      (m) => String(+m[2] / +m[1] * +m[3]),
+    ],
+    [
+      /^([\d, ]+) の 中央値は？$/,
+      (m) => {
+        const v = m[1].split(",").map(Number).sort((a, b) => a - b);
+        return String(v[(v.length - 1) / 2]);
+      },
+    ],
+    [
+      /^([\d, ]+) の 最頻値は？$/,
+      (m) => {
+        const v = m[1].split(",").map(Number);
+        const count = new Map<number, number>();
+        for (const x of v) count.set(x, (count.get(x) ?? 0) + 1);
+        return String([...count.entries()].sort((a, b) => b[1] - a[1])[0][0]);
+      },
     ],
   ];
   const hit = new Set<number>();
