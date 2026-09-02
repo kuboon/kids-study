@@ -15,6 +15,7 @@
 import { PRNG } from "../prng.ts";
 import type { Quiz, QuizGenerator } from "../types.ts";
 import { decimal, distinct, fraction, gcd, lcm, nearMiss } from "./common.ts";
+import { mathRow, mfrac, mo } from "./mathml.ts";
 
 /** 偶数・奇数。答えは数値でなく語なので誤答も語で返す。 */
 const evenOddQuiz = (seed: number): Quiz => {
@@ -102,7 +103,7 @@ const diffDenomFractionQuiz = (sub: boolean) => (seed: number): Quiz => {
     if (num <= 0) continue;
     const a = fraction(num, den);
     return {
-      q: `${n1}/${d1} ${sub ? "-" : "+"} ${n2}/${d2}`,
+      q: mathRow(mfrac(n1, d1), mo(sub ? "-" : "+"), mfrac(n2, d2)),
       a,
       wrong: () =>
         distinct(() => {
@@ -116,7 +117,11 @@ const diffDenomFractionQuiz = (sub: boolean) => (seed: number): Quiz => {
         }, a),
     };
   }
-  return { q: "1/2 + 1/3", a: "5/6", wrong: () => "2/5" };
+  return {
+    q: mathRow(mfrac(1, 2), mo("+"), mfrac(1, 3)),
+    a: fraction(5, 6),
+    wrong: () => fraction(2, 5),
+  };
 };
 
 /**

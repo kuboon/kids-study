@@ -1,5 +1,6 @@
 import { assertEquals } from "@std/assert";
 import { decimal, fraction, gcd, lcm, maxOf } from "./common.ts";
+import { frac, plainMath } from "./mathml.ts";
 
 Deno.test("maxOf: 桁数から最大値", () => {
   assertEquals(maxOf(1), 9);
@@ -24,9 +25,12 @@ Deno.test("gcd / lcm", () => {
 });
 
 Deno.test("fraction: 約分し、分母1は整数にする", () => {
-  assertEquals(fraction(1, 2), "1/2");
-  assertEquals(fraction(2, 4), "1/2");
+  // 分数は MathML で組む（表示は横棒つき）。約分後の値で組むので、同じ値なら
+  // 必ず同じ markup になる。
+  assertEquals(plainMath(fraction(1, 2)), "1/2");
+  assertEquals(fraction(2, 4), fraction(1, 2));
+  assertEquals(fraction(1, 2), frac(1, 2));
   assertEquals(fraction(4, 4), "1");
   assertEquals(fraction(8, 4), "2");
-  assertEquals(fraction(7, 5), "7/5");
+  assertEquals(plainMath(fraction(7, 5)), "7/5");
 });

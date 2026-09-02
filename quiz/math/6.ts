@@ -15,6 +15,7 @@
 import { PRNG } from "../prng.ts";
 import type { Quiz, QuizGenerator } from "../types.ts";
 import { decimal, distinct, fraction, gcd, nearMiss } from "./common.ts";
+import { mathRow, mfrac, mo } from "./mathml.ts";
 
 /** 分数×分数 / 分数÷分数。答えは約分して返す。 */
 const fractionMulDivQuiz = (div: boolean) => (seed: number): Quiz => {
@@ -28,7 +29,7 @@ const fractionMulDivQuiz = (div: boolean) => (seed: number): Quiz => {
   const den = div ? d1 * n2 : d1 * d2;
   const a = fraction(num, den);
   return {
-    q: `${n1}/${d1} ${div ? "÷" : "×"} ${n2}/${d2}`,
+    q: mathRow(mfrac(n1, d1), mo(div ? "÷" : "×"), mfrac(n2, d2)),
     a,
     wrong: () =>
       distinct(() => {

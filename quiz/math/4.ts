@@ -14,6 +14,7 @@
 import { PRNG } from "../prng.ts";
 import type { Quiz, QuizGenerator } from "../types.ts";
 import { decimal, distinct, gcd, nearMiss } from "./common.ts";
+import { frac, mathRow, mfrac, mo } from "./mathml.ts";
 
 /** わり算。`withRemainder` なら「3あまり2」の形で答えさせる。 */
 const divQuiz = (withRemainder: boolean) => (seed: number): Quiz => {
@@ -108,19 +109,23 @@ const sameDenomFractionQuiz = (sub: boolean) => (seed: number): Quiz => {
     const num = sub ? x - y : x + y;
     if (num <= 0) continue;
     if (gcd(num, den) !== 1) continue; // 約分が必要になる組は避ける
-    const a = `${num}/${den}`;
+    const a = frac(num, den);
     return {
-      q: `${x}/${den} ${sub ? "-" : "+"} ${y}/${den}`,
+      q: mathRow(mfrac(x, den), mo(sub ? "-" : "+"), mfrac(y, den)),
       a,
       wrong: () =>
         distinct(() => {
           const w = nearMiss(prng, num, { spread: 3, min: 1 });
-          return `${w}/${den}`;
+          return frac(w, den);
         }, a),
     };
   }
   // 上のループは den=5,x=1,y=2 などで必ず成立するが、型のために既定を返す
-  return { q: "1/5 + 2/5", a: "3/5", wrong: () => "4/5" };
+  return {
+    q: mathRow(mfrac(1, 5), mo("+"), mfrac(2, 5)),
+    a: frac(3, 5),
+    wrong: () => frac(4, 5),
+  };
 };
 
 /**

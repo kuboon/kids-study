@@ -8,11 +8,26 @@
  *
  * 答えを別経路で検算するのが要点。生成側の式をそのままテストに書き写すと、
  * 同じ勘違いを二度書くだけでバグは見つからない。
+ *
+ * 分数は MathML で出るので、検算はいったんプレーン表記（1/2）に直してから
+ * 行う。markup そのものの健全さは別に確かめる。
  */
 
 import { assert, assertEquals } from "@std/assert";
 import { ADVANCED } from "../types.ts";
+import type { Quiz, QuizGenerator } from "../types.ts";
+import { plainMath } from "./mathml.ts";
 import math from "./mod.ts";
+
+/** 表示用 markup を剥がした問題。検算はすべてこの形に対して行う。 */
+const plain = (gen: QuizGenerator, seed: number): Quiz => {
+  const q = gen.fn(seed);
+  return {
+    q: plainMath(q.q),
+    a: plainMath(q.a),
+    wrong: () => plainMath(q.wrong()),
+  };
+};
 
 // ---- 式の評価（生成側とは独立した再帰下降パーサ） -------------------------
 
@@ -94,7 +109,7 @@ const SEEDS = Array.from({ length: 200 }, (_, i) => i * 7919 + 13);
 Deno.test("答えが空でなく、壊れた数値を含まない", () => {
   for (const gen of math) {
     for (const seed of SEEDS) {
-      const q = gen.fn(seed);
+      const q = plain(gen, seed);
       assert(q.a.length > 0, `${gen.title}: 答えが空`);
       assert(
         !/NaN|Infinity|undefined|null/.test(q.a + q.q),
@@ -112,7 +127,7 @@ Deno.test("答えが空でなく、壊れた数値を含まない", () => {
 Deno.test("誤答が正解と一致しない", () => {
   for (const gen of math) {
     for (const seed of SEEDS) {
-      const q = gen.fn(seed);
+      const q = plain(gen, seed);
       for (let i = 0; i < 8; i++) {
         assertEquals(
           q.wrong() === q.a,
@@ -144,7 +159,7 @@ Deno.test("式で出す問題は、独立に評価した値と答えが一致す
   let checked = 0;
   for (const gen of math) {
     for (const seed of SEEDS) {
-      const q = gen.fn(seed);
+      const q = plain(gen, seed);
       const expected = evalExpr(q.q);
       if (expected === null) continue; // 文章題はここでは検算しない
       if (q.a.includes("あまり")) continue; // 専用のテストで検算する
@@ -165,7 +180,7 @@ Deno.test("小学校の学年では答えも問題も負の数にならない", 
   for (const gen of math) {
     if (gen.grade === ADVANCED) continue;
     for (const seed of SEEDS) {
-      const q = gen.fn(seed);
+      const q = plain(gen, seed);
       assert(
         !q.a.startsWith("-") && !q.q.includes("-("),
         `${gen.title}: 負の数が出ている (${q.q} → ${q.a})`,
@@ -185,7 +200,7 @@ Deno.test("あまりのあるわり算: 商×除数+あまり が被除数に戻
   assert(gen, "あまりのあるわり算が見つからない");
   let checked = 0;
   for (const seed of SEEDS) {
-    const q = gen.fn(seed);
+    const q = plain(gen, seed);
     const [, dividend, divisor] = /^(\d+) ÷ (\d+)$/.exec(q.q)!;
     const [, quot, rem] = /^(\d+) あまり (\d+)$/.exec(q.a)!;
     assertEquals(
@@ -290,7 +305,7 @@ Deno.test("文章題の検算（式パーサでは確かめられない分）", 
   let checked = 0;
   for (const gen of math) {
     for (const seed of SEEDS) {
-      const q = gen.fn(seed);
+      const q = plain(gen, seed);
       for (const [re, calc] of checks) {
         const m = re.exec(q.q);
         if (!m) continue;
@@ -305,11 +320,56 @@ Deno.test("文章題の検算（式パーサでは確かめられない分）", 
   assert(checked > 1000, `検算できた文章題が少なすぎる (${checked})`);
 });
 
+// ---- 表示 markup ------------------------------------------------------------
+
+/** 出題に使う要素は `<math>` / `<mfrac>` / `<mn>` / `<mo>` / `<mi>` だけ。 */
+const WELL_FORMED =
+  /^(?:[^<]*<math>(?:<mfrac><mn>[^<]*<\/mn><mn>[^<]*<\/mn><\/mfrac>|<(?:mn|mi|mo)>[^<]*<\/(?:mn|mi|mo)>)+<\/math>)*[^<]*$/;
+
+Deno.test("MathML の markup が壊れていない", () => {
+  // タグを剥がして読む経路（canvas 描画やプレーン比較）があるので、閉じ忘れや
+  // 想定外の要素は静かに消えてしまう。ここで構造そのものを縛る。
+  for (const gen of math) {
+    for (const seed of SEEDS) {
+      const q = gen.fn(seed);
+      for (const html of [q.q, q.a, q.wrong()]) {
+        assert(
+          WELL_FORMED.test(html),
+          `${gen.title}: markup が壊れている (${html})`,
+        );
+        assert(
+          !/[<>]/.test(plainMath(html)),
+          `${gen.title}: タグが残っている (${html})`,
+        );
+      }
+    }
+  }
+});
+
+Deno.test("分数は MathML で組む（スラッシュ表記のままにしない）", () => {
+  const fracGens = math.filter((g) => g.title.includes("分数"));
+  assert(fracGens.length > 0, "分数のジェネレータが見つからない");
+  for (const gen of fracGens) {
+    for (const seed of SEEDS.slice(0, 20)) {
+      const q = gen.fn(seed);
+      assert(
+        q.q.includes("<mfrac>"),
+        `${gen.title}: 問題が分数になっていない (${q.q})`,
+      );
+      // 答えは約分で整数になることがある（4/4 → 1）ので、分数の形のときだけ縛る
+      assert(
+        !plainMath(q.a).includes("/") || q.a.includes("<mfrac>"),
+        `${gen.title}: 答えが分数になっていない (${q.a})`,
+      );
+    }
+  }
+});
+
 Deno.test("がい数: 四捨五入の結果になっている", () => {
   const gen = math.find((g) => g.title.includes("がい数"));
   assert(gen, "がい数が見つからない");
   for (const seed of SEEDS) {
-    const q = gen.fn(seed);
+    const q = plain(gen, seed);
     const [, n, keep] = /^(\d+) を 上から (\d)けたの がい数に$/.exec(q.q)!;
     const unit = 10 ** (n.length - Number(keep));
     assertEquals(

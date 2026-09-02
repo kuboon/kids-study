@@ -7,6 +7,7 @@
  */
 
 import { createSession, type QuizSession } from "../../../../quiz/session.ts";
+import { plainMath } from "../../../../quiz/math/mathml.ts";
 import type { GameModule, GameMount } from "../types.ts";
 
 type Boss = { name: string; emoji: string; hp: number; rage?: boolean };
@@ -34,8 +35,6 @@ const comboTier = (combo: number): number =>
 
 const comboMultiplier = (combo: number): number =>
   [1, 1.5, 2, 3][comboTier(combo)];
-
-const stripHtml = (s: string) => s.replace(/<[^>]*>/g, "");
 
 const shuffle = <T>(arr: T[]): T[] => {
   const a = arr.slice();
@@ -382,25 +381,38 @@ export const mount: GameMount = (container, { quiz, onComplete }) => {
 
   const ask = () => {
     const q = session.next();
-    const correct = stripHtml(q.a);
-    const opts: string[] = [correct];
+    // Options carry the display markup (fractions are MathML) but are
+    // identified by their plain form, so two spellings of the same value
+    // never appear twice.
+    const correct = plainMath(q.a);
+    const opts: { html: string; text: string }[] = [{
+      html: q.a,
+      text: correct,
+    }];
     let safety = 16;
     while (opts.length < 4 && safety-- > 0) {
-      const w = stripHtml(q.wrong());
-      if (!opts.includes(w)) opts.push(w);
+      const html = q.wrong();
+      const text = plainMath(html);
+      if (!opts.some((o) => o.text === text)) opts.push({ html, text });
     }
-    while (opts.length < 4) opts.push(`?${opts.length}`);
+    while (opts.length < 4) {
+      const text = `?${opts.length}`;
+      opts.push({ html: text, text });
+    }
 
     el("question").innerHTML = q.q;
     const grid = el("answers");
     grid.innerHTML = "";
-    for (const v of shuffle(opts)) {
+    for (const o of shuffle(opts)) {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "btn btn-lg btn-outline text-2xl";
-      btn.dataset.v = v;
-      btn.textContent = v;
-      btn.addEventListener("click", () => resolve(btn, v === correct, correct));
+      btn.dataset.v = o.text;
+      btn.innerHTML = o.html;
+      btn.addEventListener(
+        "click",
+        () => resolve(btn, o.text === correct, correct),
+      );
       grid.appendChild(btn);
     }
     startTimer(correct);

@@ -5,6 +5,28 @@
 }
 
 @layer base {
+  /*
+   * 分数は MathML で出す（quiz/math/mathml.ts）。既定の描画は本文に対して
+   * 小さく、横棒も細いので、子どもが見て分数と分かる大きさに寄せる。
+   * 前後の文字に食い込まないよう縦の余白も少し取る。
+   */
+  math {
+    /*
+     * 既定（math-style: compact）だと分子・分母が7割ほどに縮んで読みにくい。
+     * normal にすると教科書と同じ大きさの分数になる。
+     */
+    math-style: normal;
+    font-size: 1.1em;
+    vertical-align: -0.2em;
+  }
+
+  /* 分数は1行の高さに収まらないので、数式を含むボタンは縦に伸ばす。 */
+  .btn:has(math) {
+    height: auto;
+    min-height: 3.75rem;
+    padding-block: 0.4rem;
+  }
+
   code {
     font-family: ui-monospace, SFMono-Regular, "Fira Code", monospace;
     background-color: var(--color-base-200);
