@@ -73,7 +73,7 @@ const words: KanjiWord[] = [
   { target: "憲", read: "けん", post: "ぽう" },
   { target: "我", read: "われ" },
   { target: "批", read: "ひ", post: "はん" },
-  { target: "担", read: "たん", post: "とう" },
+  { target: "担", read: "たん", post: "にん" },
   { target: "拝", read: "おが", post: "む" },
   { target: "拡", read: "かく", post: "だい" },
   { target: "捨", read: "す", post: "てる" },
